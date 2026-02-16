@@ -46,6 +46,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     const renderTaskRef = useRef<ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]> | null>(null);
     const pdfjsLibRef = useRef<typeof import("pdfjs-dist") | null>(null);
     const blobUrlRef = useRef<string | null>(null);
+    const selectionCleanupRef = useRef<(() => void) | null>(null);
 
     // Page prefetch cache — เก็บ ImageBitmap ของหน้าที่ render แล้ว
     const PREFETCH_AHEAD = 3;
@@ -63,9 +64,10 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       getPdfDocument: () => pdf,
     }));
 
-    // Cleanup page cache on unmount
+    // Cleanup page cache + selection bindings on unmount
     useEffect(() => {
       return () => {
+        selectionCleanupRef.current?.();
         for (const bm of pageCacheRef.current.values()) bm.close();
         pageCacheRef.current.clear();
       };
@@ -222,6 +224,77 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         });
         await tl.render();
 
+        // Cleanup previous selection bindings
+        selectionCleanupRef.current?.();
+
+        // Create endOfContent div + bind selection events (จำลอง TextLayerBuilder)
+        const endOfContent = document.createElement("div");
+        endOfContent.className = "endOfContent";
+        textLayer.append(endOfContent);
+
+        const controller = new AbortController();
+        const { signal } = controller;
+
+        const resetSelection = () => {
+          textLayer.append(endOfContent);
+          endOfContent.style.width = "";
+          endOfContent.style.height = "";
+          textLayer.classList.remove("selecting");
+        };
+
+        // mousedown บน textLayer → เริ่ม selecting mode
+        textLayer.addEventListener("mousedown", () => {
+          textLayer.classList.add("selecting");
+        }, { signal });
+
+        // Global events สำหรับ smooth selection
+        let isPointerDown = false;
+        document.addEventListener("pointerdown", () => { isPointerDown = true; }, { signal });
+        document.addEventListener("pointerup", () => { isPointerDown = false; resetSelection(); }, { signal });
+        window.addEventListener("blur", () => { isPointerDown = false; resetSelection(); }, { signal });
+        document.addEventListener("keyup", () => { if (!isPointerDown) resetSelection(); }, { signal });
+
+        // selectionchange — ย้าย endOfContent ไปอยู่ข้าง anchor span ขณะลาก
+        // นี่คือ secret sauce ที่ทำให้ selection ไม่กระโดด
+        let prevRange: Range | null = null;
+        document.addEventListener("selectionchange", () => {
+          const selection = document.getSelection();
+          if (!selection || selection.rangeCount === 0) {
+            resetSelection();
+            return;
+          }
+
+          const range = selection.getRangeAt(0);
+          if (!range.intersectsNode(textLayer)) {
+            resetSelection();
+            return;
+          }
+
+          textLayer.classList.add("selecting");
+
+          // Reposition endOfContent next to anchor point
+          const modifyStart = prevRange && (
+            range.compareBoundaryPoints(Range.END_TO_END, prevRange) === 0 ||
+            range.compareBoundaryPoints(Range.START_TO_END, prevRange) === 0
+          );
+          let anchor: Node = modifyStart ? range.startContainer : range.endContainer;
+          if (anchor.nodeType === Node.TEXT_NODE) {
+            anchor = anchor.parentNode!;
+          }
+          const parentTL = (anchor as Element).parentElement?.closest(".textLayer");
+          if (parentTL === textLayer && (anchor as Element).parentElement) {
+            endOfContent.style.width = textLayer.style.width;
+            endOfContent.style.height = textLayer.style.height;
+            (anchor as Element).parentElement!.insertBefore(
+              endOfContent,
+              modifyStart ? anchor : anchor.nextSibling
+            );
+          }
+          prevRange = range.cloneRange();
+        }, { signal });
+
+        selectionCleanupRef.current = () => controller.abort();
+
         // Apply saved highlights to text layer spans
         if (highlights && highlights.length > 0) {
           const pageHighlights = highlights.filter((h) => h.page === currentPage);
@@ -257,7 +330,10 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         }
       })();
 
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+        selectionCleanupRef.current?.();
+      };
     }, [pdf, currentPage, scale, totalPages, onPageChange, highlights, prefetchPage, evictDistantPages]);
 
     // Text selection — debounced to avoid flickering during drag
