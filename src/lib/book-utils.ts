@@ -46,7 +46,18 @@ export async function extractEpubMetadata(
   const ePub = (await import("epubjs")).default;
   const arrayBuffer = await file.arrayBuffer();
   const book = ePub(arrayBuffer);
-  await book.ready;
+
+  try {
+    await book.ready;
+  } catch (err) {
+    // If book.ready fails, try to get what we can
+    console.warn("EPUB ready failed, using filename as fallback:", err);
+    try { book.destroy(); } catch {}
+    return {
+      title: file.name.replace(/\.epub$/i, ""),
+      author: "",
+    };
+  }
 
   const meta = book.packaging.metadata;
   const title = meta.title || file.name.replace(/\.epub$/i, "");
@@ -56,19 +67,28 @@ export async function extractEpubMetadata(
   try {
     const coverUrl = await book.coverUrl();
     if (coverUrl) {
+      // coverUrl returns an object URL (blob:) — fetch and convert to data URL
       const response = await fetch(coverUrl);
       const blob = await response.blob();
-      cover = await new Promise<string>((resolve) => {
+      cover = await new Promise<string>((resolve, reject) => {
         const reader = new FileReader();
         reader.onload = () => resolve(reader.result as string);
+        reader.onerror = () => reject(reader.error);
         reader.readAsDataURL(blob);
       });
+      // Revoke the object URL to free memory
+      URL.revokeObjectURL(coverUrl);
     }
   } catch {
     // ignore cover extraction failure
   }
 
-  book.destroy();
+  try {
+    book.destroy();
+  } catch {
+    // ignore cleanup errors
+  }
+
   return { title, author, cover };
 }
 
@@ -93,8 +113,9 @@ export async function addBook(file: File): Promise<number> {
       author = meta.author;
       cover = meta.cover;
     }
-  } catch {
-    // use filename as fallback
+  } catch (err) {
+    console.warn("Metadata extraction failed, using filename:", err);
+    // use filename as fallback — already set above
   }
 
   const now = new Date();
@@ -110,9 +131,11 @@ export async function addBook(file: File): Promise<number> {
     updatedAt: now,
   });
 
+  // Store the file as a Blob (not File) for better IndexedDB compatibility
+  const blob = new Blob([await file.arrayBuffer()], { type: file.type || (format === "epub" ? "application/epub+zip" : "application/pdf") });
   await db.bookFiles.add({
     bookId: bookId as number,
-    fileData: file,
+    fileData: blob,
   });
 
   return bookId as number;

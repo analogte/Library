@@ -65,12 +65,20 @@ export default function ReaderPage() {
       }
 
       const fileRecord = await db.bookFiles.where("bookId").equals(bookId).first();
-      if (!fileRecord) {
+      if (!fileRecord || !fileRecord.fileData) {
         toast.error("ไม่พบไฟล์หนังสือ");
         router.push("/");
         return;
       }
-      setFileData(fileRecord.fileData);
+
+      // Ensure fileData is a proper Blob with correct MIME type
+      let blob = fileRecord.fileData;
+      if (b.format === "epub" && blob.type !== "application/epub+zip") {
+        blob = new Blob([await blob.arrayBuffer()], { type: "application/epub+zip" });
+      } else if (b.format === "pdf" && blob.type !== "application/pdf") {
+        blob = new Blob([await blob.arrayBuffer()], { type: "application/pdf" });
+      }
+      setFileData(blob);
 
       // Load progress
       const progress = await db.readingProgress.where("bookId").equals(bookId).first();

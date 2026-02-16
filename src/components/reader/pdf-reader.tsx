@@ -6,6 +6,7 @@ import {
   useRef,
   forwardRef,
   useImperativeHandle,
+  useCallback,
 } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
@@ -32,8 +33,12 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     const [totalPages, setTotalPages] = useState(0);
     const [scale, setScale] = useState(1.5);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState<string | null>(null);
     const renderTaskRef = useRef<ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]> | null>(null);
     const pdfjsLibRef = useRef<typeof import("pdfjs-dist") | null>(null);
+
+    // Touch tracking for swipe
+    const touchStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
 
     useImperativeHandle(ref, () => ({
       goToPage: (page: number) => {
@@ -47,16 +52,24 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     useEffect(() => {
       let cancelled = false;
       (async () => {
-        const pdfjsLib = await import("pdfjs-dist");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-        pdfjsLibRef.current = pdfjsLib;
+        try {
+          const pdfjsLib = await import("pdfjs-dist");
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+          pdfjsLibRef.current = pdfjsLib;
 
-        const arrayBuffer = await fileData.arrayBuffer();
-        const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        if (!cancelled) {
-          setPdf(doc);
-          setTotalPages(doc.numPages);
-          setLoading(false);
+          const arrayBuffer = await fileData.arrayBuffer();
+          const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
+          if (!cancelled) {
+            setPdf(doc);
+            setTotalPages(doc.numPages);
+            setLoading(false);
+          }
+        } catch (err) {
+          if (!cancelled) {
+            console.error("PDF loading error:", err);
+            setError("ไม่สามารถเปิดไฟล์ PDF ได้ — ไฟล์อาจเสียหาย");
+            setLoading(false);
+          }
         }
       })();
       return () => { cancelled = true; };
@@ -147,25 +160,65 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       return () => window.removeEventListener("keydown", handleKeyDown);
     }, [totalPages]);
 
+    // Touch swipe
+    const handleTouchStart = useCallback((e: React.TouchEvent) => {
+      const touch = e.touches[0];
+      touchStartRef.current = { x: touch.clientX, y: touch.clientY, time: Date.now() };
+    }, []);
+
+    const handleTouchEnd = useCallback((e: React.TouchEvent) => {
+      if (!touchStartRef.current) return;
+      const touch = e.changedTouches[0];
+      const dx = touch.clientX - touchStartRef.current.x;
+      const dy = touch.clientY - touchStartRef.current.y;
+      const dt = Date.now() - touchStartRef.current.time;
+      touchStartRef.current = null;
+
+      if (dt < 500 && Math.abs(dx) > 40 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        if (dx < 0) {
+          setCurrentPage((p) => Math.min(p + 1, totalPages));
+        } else {
+          setCurrentPage((p) => Math.max(p - 1, 1));
+        }
+      }
+    }, [totalPages]);
+
+    if (error) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-4 p-8 text-center">
+          <div className="rounded-full bg-destructive/10 p-4">
+            <svg className="h-8 w-8 text-destructive" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+            </svg>
+          </div>
+          <p className="text-sm font-medium text-destructive">{error}</p>
+        </div>
+      );
+    }
+
     if (loading) {
       return (
         <div className="flex h-full items-center justify-center">
-          <p className="text-muted-foreground">กำลังโหลด PDF...</p>
+          <div className="flex flex-col items-center gap-3">
+            <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+            <p className="text-sm text-muted-foreground">กำลังโหลด PDF...</p>
+          </div>
         </div>
       );
     }
 
     return (
-      <div ref={containerRef} className="flex h-full flex-col items-center overflow-auto bg-muted/30">
+      <div
+        ref={containerRef}
+        className="flex h-full flex-col items-center overflow-auto bg-muted/30"
+        onTouchStart={handleTouchStart}
+        onTouchEnd={handleTouchEnd}
+      >
         <div className="relative my-4">
           <canvas ref={canvasRef} className="shadow-lg" />
           <div
             ref={textLayerRef}
-            className="absolute inset-0"
-            style={{
-              opacity: 0.3,
-              lineHeight: 1,
-            }}
+            className="textLayer absolute inset-0"
           />
         </div>
 
