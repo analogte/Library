@@ -47,6 +47,13 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     const pdfjsLibRef = useRef<typeof import("pdfjs-dist") | null>(null);
     const blobUrlRef = useRef<string | null>(null);
 
+    // Page prefetch cache — เก็บ ImageBitmap ของหน้าที่ render แล้ว
+    const PREFETCH_AHEAD = 3;
+    const PREFETCH_BEHIND = 1;
+    const pageCacheRef = useRef<Map<number, ImageBitmap>>(new Map());
+    const cacheScaleRef = useRef(scale);
+    const prefetchingRef = useRef<Set<number>>(new Set());
+
     useImperativeHandle(ref, () => ({
       goToPage: (page: number) => {
         if (page >= 1 && page <= totalPages) setCurrentPage(page);
@@ -55,6 +62,58 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       getTotalPages: () => totalPages,
       getPdfDocument: () => pdf,
     }));
+
+    // Cleanup page cache on unmount
+    useEffect(() => {
+      return () => {
+        for (const bm of pageCacheRef.current.values()) bm.close();
+        pageCacheRef.current.clear();
+      };
+    }, []);
+
+    // Prefetch a single page to cache (runs in background, ไม่ block UI)
+    const prefetchPage = useCallback((pdfDoc: PDFDocumentProxy, pageNum: number, renderScale: number) => {
+      const cache = pageCacheRef.current;
+      if (cache.has(pageNum) || prefetchingRef.current.has(pageNum)) return;
+
+      prefetchingRef.current.add(pageNum);
+      (async () => {
+        try {
+          const page = await pdfDoc.getPage(pageNum);
+          const viewport = page.getViewport({ scale: renderScale });
+
+          // Render ลง hidden canvas (ไม่ใส่ DOM — ไม่มีผลกับ UI)
+          const tempCanvas = document.createElement("canvas");
+          tempCanvas.width = viewport.width;
+          tempCanvas.height = viewport.height;
+          const ctx = tempCanvas.getContext("2d");
+          if (!ctx) return;
+
+          await page.render({ canvasContext: ctx, viewport }).promise;
+
+          // เก็บเป็น ImageBitmap (ประหยัด memory กว่าเก็บ canvas)
+          if (cacheScaleRef.current === renderScale) {
+            const bitmap = await createImageBitmap(tempCanvas);
+            cache.set(pageNum, bitmap);
+          }
+        } catch {
+          // prefetch failed — ไม่เป็นไร จะ render ตอนเปิดหน้าจริง
+        } finally {
+          prefetchingRef.current.delete(pageNum);
+        }
+      })();
+    }, []);
+
+    // ลบหน้าที่ห่างจาก currentPage ออกจาก cache
+    const evictDistantPages = useCallback((current: number) => {
+      const cache = pageCacheRef.current;
+      for (const [num, bm] of cache) {
+        if (Math.abs(num - current) > PREFETCH_AHEAD + 1) {
+          bm.close();
+          cache.delete(num);
+        }
+      }
+    }, []);
 
     // Load PDF — use Blob URL for streaming (much better for large files)
     useEffect(() => {
@@ -92,9 +151,16 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       };
     }, [fileData]);
 
-    // Render page
+    // Render page — ใช้ cache ถ้ามี, ไม่มีก็ render แล้ว cache ไว้
     useEffect(() => {
       if (!pdf || !canvasRef.current || !textLayerRef.current) return;
+
+      // ถ้า scale เปลี่ยน → ล้าง cache ทั้งหมด (ต้อง render ใหม่ที่ขนาดใหม่)
+      if (cacheScaleRef.current !== scale) {
+        for (const bm of pageCacheRef.current.values()) bm.close();
+        pageCacheRef.current.clear();
+        cacheScaleRef.current = scale;
+      }
 
       let cancelled = false;
       (async () => {
@@ -113,17 +179,33 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         canvas.width = viewport.width;
         canvas.height = viewport.height;
 
-        const renderTask = page.render({ canvasContext: ctx, viewport });
-        renderTaskRef.current = renderTask;
+        // ตรวจ cache — ถ้ามี ImageBitmap แล้ว วาดทันทีไม่ต้อง render
+        const cached = pageCacheRef.current.get(currentPage);
+        if (cached) {
+          ctx.drawImage(cached, 0, 0);
+        } else {
+          // Cache miss — render ปกติ แล้วเก็บลง cache
+          const renderTask = page.render({ canvasContext: ctx, viewport });
+          renderTaskRef.current = renderTask;
 
-        try {
-          await renderTask.promise;
-        } catch {
-          // render cancelled
-          return;
+          try {
+            await renderTask.promise;
+          } catch {
+            return; // render cancelled
+          }
+
+          // เก็บผลลัพธ์ลง cache เป็น ImageBitmap
+          if (!cancelled) {
+            try {
+              const bitmap = await createImageBitmap(canvas);
+              pageCacheRef.current.set(currentPage, bitmap);
+            } catch {}
+          }
         }
 
-        // Text layer
+        if (cancelled) return;
+
+        // Text layer (render ทุกครั้ง — เพราะเป็น interactive element)
         const textContent = await page.getTextContent();
         if (cancelled) return;
 
@@ -150,7 +232,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
               spans.forEach((span) => {
                 const spanText = span.textContent?.toLowerCase() ?? "";
                 if (spanText && hlText.includes(spanText) && spanText.length > 1) {
-                  span.style.backgroundColor = hl.color + "66"; // add alpha
+                  span.style.backgroundColor = hl.color + "66";
                   span.style.borderRadius = "2px";
                   span.setAttribute("data-highlight-id", String(hl.id));
                 } else if (spanText && spanText.includes(hlText) && hlText.length > 1) {
@@ -164,10 +246,19 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         }
 
         onPageChange?.(currentPage, totalPages);
+
+        // Prefetch หน้าใกล้เคียง + ลบหน้าที่ไกลออกจาก cache
+        evictDistantPages(currentPage);
+        for (let i = 1; i <= PREFETCH_AHEAD; i++) {
+          if (currentPage + i <= totalPages) prefetchPage(pdf, currentPage + i, scale);
+        }
+        for (let i = 1; i <= PREFETCH_BEHIND; i++) {
+          if (currentPage - i >= 1) prefetchPage(pdf, currentPage - i, scale);
+        }
       })();
 
       return () => { cancelled = true; };
-    }, [pdf, currentPage, scale, totalPages, onPageChange, highlights]);
+    }, [pdf, currentPage, scale, totalPages, onPageChange, highlights, prefetchPage, evictDistantPages]);
 
     // Text selection — debounced to avoid flickering during drag
     const selectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
