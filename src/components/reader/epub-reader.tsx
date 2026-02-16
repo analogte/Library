@@ -168,9 +168,10 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
     }, []);
 
     return (
-      <div className="flex h-full flex-col">
+      <div className="relative flex h-full flex-col">
+        {/* Loading overlay — ครอบ viewer ไว้แต่ไม่ซ่อน viewer เพราะ epubjs ต้องคำนวณขนาด */}
         {loading && (
-          <div className="flex h-full items-center justify-center">
+          <div className="absolute inset-0 z-10 flex items-center justify-center bg-background">
             <p className="text-muted-foreground">กำลังโหลด EPUB...</p>
           </div>
         )}
@@ -204,7 +205,8 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
           </div>
         )}
 
-        <div ref={viewerRef} className="flex-1" style={{ display: loading ? "none" : "block" }} />
+        {/* Viewer ต้องแสดงตลอด — epubjs ต้องการ container ที่มีขนาดจริงตั้งแต่ renderTo */}
+        <div ref={viewerRef} className="flex-1" />
 
         {/* Bottom nav */}
         {!loading && (
