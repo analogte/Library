@@ -42,6 +42,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     const [scale, setScale] = useState(1.5);
     const [loading, setLoading] = useState(true);
     const [error, setError] = useState("");
+    const [highlightPopup, setHighlightPopup] = useState<{ id: number; x: number; y: number } | null>(null);
     const renderTaskRef = useRef<ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]> | null>(null);
     const pdfjsLibRef = useRef<typeof import("pdfjs-dist") | null>(null);
     const blobUrlRef = useRef<string | null>(null);
@@ -190,13 +191,23 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       if (selectionTimerRef.current) clearTimeout(selectionTimerRef.current);
     };
 
-    // Click on highlighted span → delete highlight
+    // Click on highlighted span → show delete popup
     const handleTextLayerClick = (e: React.MouseEvent) => {
+      // Don't show popup if user is selecting text
+      const selection = window.getSelection();
+      if (selection && !selection.isCollapsed) return;
+
       const target = e.target as HTMLElement;
       const highlightId = target.getAttribute("data-highlight-id");
-      if (highlightId && onHighlightDelete) {
-        e.stopPropagation();
-        onHighlightDelete(Number(highlightId));
+      if (highlightId) {
+        const rect = target.getBoundingClientRect();
+        setHighlightPopup({
+          id: Number(highlightId),
+          x: rect.left + rect.width / 2,
+          y: rect.top - 8,
+        });
+      } else {
+        setHighlightPopup(null);
       }
     };
 
@@ -265,6 +276,34 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
             onClick={handleTextLayerClick}
           />
         </div>
+
+        {/* Highlight delete popup */}
+        {highlightPopup && (
+          <div
+            className="fixed z-50 flex items-center gap-1 rounded-lg border bg-popover px-2 py-1.5 shadow-lg"
+            style={{
+              left: highlightPopup.x,
+              top: highlightPopup.y,
+              transform: "translate(-50%, -100%)",
+            }}
+          >
+            <button
+              className="rounded px-2 py-0.5 text-xs font-medium text-destructive hover:bg-destructive/10"
+              onClick={() => {
+                onHighlightDelete?.(highlightPopup.id);
+                setHighlightPopup(null);
+              }}
+            >
+              ลบไฮไลท์
+            </button>
+            <button
+              className="rounded px-2 py-0.5 text-xs text-muted-foreground hover:bg-muted"
+              onClick={() => setHighlightPopup(null)}
+            >
+              ยกเลิก
+            </button>
+          </div>
+        )}
 
         {/* Bottom page nav */}
         <div className="sticky bottom-0 flex items-center gap-4 bg-background/80 backdrop-blur-sm px-4 py-2 rounded-t-lg border">

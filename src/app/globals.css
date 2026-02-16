@@ -157,6 +157,24 @@
   background: rgba(0, 100, 255, 0.3);
 }
 
+.textLayer br::selection {
+  background: transparent;
+}
+
+/* endOfContent — critical for smooth text selection across spans */
+.textLayer .endOfContent {
+  display: block;
+  position: absolute;
+  inset: 100% 0 0;
+  z-index: -1;
+  cursor: default;
+  user-select: none;
+}
+
+.textLayer .endOfContent.active {
+  top: 0;
+}
+
 /* Highlighted spans in PDF — visible background */
 .textLayer span[data-highlight-id] {
   cursor: pointer;
