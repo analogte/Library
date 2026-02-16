@@ -20,13 +20,13 @@ class LibraryDB extends Dexie {
 
   constructor() {
     super("PersonalLibraryDB");
-    this.version(1).stores({
-      books: "++id, title, author, format, status, addedAt",
+    this.version(3).stores({
+      books: "++id, title, author, format, status, addedAt, updatedAt",
       bookFiles: "++id, bookId",
       readingProgress: "++id, bookId",
       bookmarks: "++id, bookId, page",
       highlights: "++id, bookId, page",
-      vocabulary: "++id, word, bookId, partOfSpeech, mastered, language",
+      vocabulary: "++id, word, bookId, partOfSpeech, mastered, language, createdAt",
       appSettings: "key",
     });
   }

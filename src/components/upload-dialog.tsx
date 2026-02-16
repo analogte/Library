@@ -91,12 +91,26 @@ export function UploadDialog({ onUploadComplete }: UploadDialogProps) {
           <DialogTitle>เพิ่มหนังสือ</DialogTitle>
         </DialogHeader>
 
+        {/* Hidden file input */}
+        <input
+          ref={inputRef}
+          id="book-file-input"
+          type="file"
+          accept=".pdf,.epub"
+          multiple
+          className="sr-only"
+          onChange={(e) => {
+            if (e.target.files) handleFiles(e.target.files);
+            e.target.value = "";
+          }}
+        />
+
         {/* Drop zone */}
-        <div
+        <label
+          htmlFor="book-file-input"
           onDragOver={handleDragOver}
           onDragLeave={handleDragLeave}
           onDrop={handleDrop}
-          onClick={() => inputRef.current?.click()}
           className={`flex cursor-pointer flex-col items-center justify-center gap-3 rounded-lg border-2 border-dashed p-8 transition-colors ${
             isDragging
               ? "border-primary bg-primary/5"
@@ -110,15 +124,7 @@ export function UploadDialog({ onUploadComplete }: UploadDialogProps) {
               หรือคลิกเพื่อเลือกไฟล์ (PDF, EPUB)
             </p>
           </div>
-          <input
-            ref={inputRef}
-            type="file"
-            accept=".pdf,.epub"
-            multiple
-            className="hidden"
-            onChange={(e) => e.target.files && handleFiles(e.target.files)}
-          />
-        </div>
+        </label>
 
         {/* File list */}
         {files.length > 0 && (
