@@ -101,7 +101,31 @@ export function SelectionMenu({
 
     const utterance = new SpeechSynthesisUtterance(text);
     utterance.lang = "en-US";
-    utterance.rate = 0.9;
+    utterance.rate = 0.85;
+    utterance.pitch = 1.0;
+
+    // Pick the best English voice available
+    const voices = window.speechSynthesis.getVoices();
+    const preferredNames = [
+      "Google US English",       // Chrome — natural
+      "Google UK English Female", // Chrome — natural
+      "Samantha",                // macOS — decent quality
+      "Karen",                   // macOS — Australian
+      "Daniel",                  // macOS — British
+      "Moira",                   // macOS — Irish
+    ];
+    let bestVoice: SpeechSynthesisVoice | undefined;
+    for (const name of preferredNames) {
+      bestVoice = voices.find((v) => v.name === name);
+      if (bestVoice) break;
+    }
+    // Fallback: any English voice
+    if (!bestVoice) {
+      bestVoice = voices.find((v) => v.lang.startsWith("en") && !v.localService) ??
+                  voices.find((v) => v.lang.startsWith("en"));
+    }
+    if (bestVoice) utterance.voice = bestVoice;
+
     utterance.onend = () => setIsSpeaking(false);
     utterance.onerror = () => setIsSpeaking(false);
 
