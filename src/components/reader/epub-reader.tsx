@@ -53,93 +53,103 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
       let destroyed = false;
 
       (async () => {
-        const ePubModule = await import("epubjs");
-        const ePub = ePubModule.default;
+        try {
+          const ePubModule = await import("epubjs");
+          const ePub = ePubModule.default;
 
-        const arrayBuffer = await fileData.arrayBuffer();
-        const book = ePub(arrayBuffer);
-        bookRef.current = book;
+          const arrayBuffer = await fileData.arrayBuffer();
+          const book = ePub(arrayBuffer);
+          bookRef.current = book;
 
-        const rendition = book.renderTo(viewerRef.current!, {
-          width: "100%",
-          height: "100%",
-          spread: "none",
-          flow: "paginated",
-        });
-        renditionRef.current = rendition;
+          const rendition = book.renderTo(viewerRef.current!, {
+            width: "100%",
+            height: "100%",
+            spread: "none",
+            flow: "paginated",
+          });
+          renditionRef.current = rendition;
 
-        rendition.themes.fontSize(`${fontSize}%`);
-        rendition.themes.register("dark", {
-          body: {
-            color: "#e5e5e5 !important",
-            background: "transparent !important",
-          },
-          "a, a:link, a:visited": { color: "#93c5fd !important" },
-        });
+          rendition.themes.fontSize(`${fontSize}%`);
+          rendition.themes.register("dark", {
+            body: {
+              color: "#e5e5e5 !important",
+              background: "transparent !important",
+            },
+            "a, a:link, a:visited": { color: "#93c5fd !important" },
+          });
 
-        // Apply dark theme if document is dark
-        if (document.documentElement.classList.contains("dark")) {
-          rendition.themes.select("dark");
-        }
-
-        // Display
-        if (initialLocation) {
-          await rendition.display(initialLocation);
-        } else {
-          await rendition.display();
-        }
-
-        if (destroyed) return;
-        setLoading(false);
-
-        // TOC
-        const nav = await book.loaded.navigation;
-        setToc(
-          nav.toc.map((item) => ({
-            label: item.label.trim(),
-            href: item.href,
-          }))
-        );
-
-        // Location change
-        rendition.on("relocated", (location: { start: { cfi: string; percentage: number } }) => {
-          const cfi = location.start.cfi;
-          const pct = location.start.percentage * 100;
-          setCurrentCfi(cfi);
-          onLocationChangeRef.current?.(cfi, pct);
-        });
-
-        // Text selection
-        rendition.on("selected", (cfiRange: string) => {
-          // @ts-expect-error - manager exists at runtime
-          const selection = rendition.manager?.getContents?.()[0]?.window?.getSelection();
-          if (!selection || selection.isCollapsed) return;
-          const text = selection.toString().trim();
-          if (!text) return;
-
-          const range = selection.getRangeAt(0);
-          const rect = range.getBoundingClientRect();
-          // Adjust rect relative to viewport
-          const iframe = viewerRef.current?.querySelector("iframe");
-          if (iframe) {
-            const iframeRect = iframe.getBoundingClientRect();
-            const adjustedRect = new DOMRect(
-              rect.x + iframeRect.x,
-              rect.y + iframeRect.y,
-              rect.width,
-              rect.height
-            );
-            onTextSelectRef.current?.(text, cfiRange, adjustedRect);
-          } else {
-            onTextSelectRef.current?.(text, cfiRange, rect);
+          // Apply dark theme if document is dark
+          if (document.documentElement.classList.contains("dark")) {
+            rendition.themes.select("dark");
           }
-        });
 
-        // Keyboard nav
-        rendition.on("keyup", (e: KeyboardEvent) => {
-          if (e.key === "ArrowRight" || e.key === "ArrowDown") rendition.next();
-          if (e.key === "ArrowLeft" || e.key === "ArrowUp") rendition.prev();
-        });
+          // Display — fallback to first page if saved location fails
+          try {
+            if (initialLocation) {
+              await rendition.display(initialLocation);
+            } else {
+              await rendition.display();
+            }
+          } catch {
+            console.warn("EPUB: saved location invalid, displaying from start");
+            await rendition.display();
+          }
+
+          if (destroyed) return;
+          setLoading(false);
+
+          // TOC
+          const nav = await book.loaded.navigation;
+          setToc(
+            nav.toc.map((item) => ({
+              label: item.label.trim(),
+              href: item.href,
+            }))
+          );
+
+          // Location change
+          rendition.on("relocated", (location: { start: { cfi: string; percentage: number } }) => {
+            const cfi = location.start.cfi;
+            const pct = location.start.percentage * 100;
+            setCurrentCfi(cfi);
+            onLocationChangeRef.current?.(cfi, pct);
+          });
+
+          // Text selection
+          rendition.on("selected", (cfiRange: string) => {
+            // @ts-expect-error - manager exists at runtime
+            const selection = rendition.manager?.getContents?.()[0]?.window?.getSelection();
+            if (!selection || selection.isCollapsed) return;
+            const text = selection.toString().trim();
+            if (!text) return;
+
+            const range = selection.getRangeAt(0);
+            const rect = range.getBoundingClientRect();
+            // Adjust rect relative to viewport
+            const iframe = viewerRef.current?.querySelector("iframe");
+            if (iframe) {
+              const iframeRect = iframe.getBoundingClientRect();
+              const adjustedRect = new DOMRect(
+                rect.x + iframeRect.x,
+                rect.y + iframeRect.y,
+                rect.width,
+                rect.height
+              );
+              onTextSelectRef.current?.(text, cfiRange, adjustedRect);
+            } else {
+              onTextSelectRef.current?.(text, cfiRange, rect);
+            }
+          });
+
+          // Keyboard nav
+          rendition.on("keyup", (e: KeyboardEvent) => {
+            if (e.key === "ArrowRight" || e.key === "ArrowDown") rendition.next();
+            if (e.key === "ArrowLeft" || e.key === "ArrowUp") rendition.prev();
+          });
+        } catch (err) {
+          console.error("EPUB load error:", err);
+          if (!destroyed) setLoading(false);
+        }
       })();
 
       return () => {
@@ -148,6 +158,22 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
         bookRef.current?.destroy();
       };
     }, [fileData]);
+
+    // Resize rendition when viewer dimensions change
+    useEffect(() => {
+      const el = viewerRef.current;
+      if (!el) return;
+      const observer = new ResizeObserver((entries) => {
+        const entry = entries[0];
+        if (!entry || !renditionRef.current) return;
+        const { width, height } = entry.contentRect;
+        if (width > 0 && height > 0) {
+          renditionRef.current.resize(width, height);
+        }
+      });
+      observer.observe(el);
+      return () => observer.disconnect();
+    }, []);
 
     // Update font size
     useEffect(() => {
@@ -206,31 +232,33 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
         )}
 
         {/* Viewer ต้องแสดงตลอด — epubjs ต้องการ container ที่มีขนาดจริงตั้งแต่ renderTo */}
-        <div ref={viewerRef} className="flex-1" />
+        {/* min-h-0 ป้องกัน iframe ดัน flex child เกินขนาด */}
+        <div ref={viewerRef} className="flex-1 min-h-0 overflow-hidden" />
 
-        {/* Bottom nav */}
-        {!loading && (
-          <div className="flex items-center justify-center gap-4 bg-background/80 backdrop-blur-sm px-4 py-2 border-t">
-            <button
-              onClick={() => setShowToc((v) => !v)}
-              className="text-sm text-muted-foreground hover:text-foreground"
-            >
-              สารบัญ
-            </button>
-            <button
-              onClick={() => renditionRef.current?.prev()}
-              className="px-2 py-1 text-sm"
-            >
-              ← ก่อน
-            </button>
-            <button
-              onClick={() => renditionRef.current?.next()}
-              className="px-2 py-1 text-sm"
-            >
-              ถัดไป →
-            </button>
-          </div>
-        )}
+        {/* Bottom nav — แสดงตลอดเพื่อให้ viewer dimensions คงที่ตั้งแต่ renderTo */}
+        <div className="flex flex-shrink-0 items-center justify-center gap-4 bg-background/80 backdrop-blur-sm px-4 py-2 border-t">
+          <button
+            onClick={() => setShowToc((v) => !v)}
+            disabled={loading}
+            className="text-sm text-muted-foreground hover:text-foreground disabled:opacity-30"
+          >
+            สารบัญ
+          </button>
+          <button
+            onClick={() => renditionRef.current?.prev()}
+            disabled={loading}
+            className="px-2 py-1 text-sm disabled:opacity-30"
+          >
+            ← ก่อน
+          </button>
+          <button
+            onClick={() => renditionRef.current?.next()}
+            disabled={loading}
+            className="px-2 py-1 text-sm disabled:opacity-30"
+          >
+            ถัดไป →
+          </button>
+        </div>
       </div>
     );
   }
