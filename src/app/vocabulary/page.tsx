@@ -9,6 +9,7 @@ import {
   Check,
   Trash2,
   ExternalLink,
+  GraduationCap,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { Input } from "@/components/ui/input";
@@ -26,6 +27,7 @@ import { PART_OF_SPEECH_LABELS } from "@/lib/types";
 import type { PartOfSpeech } from "@/lib/types";
 import { toast } from "sonner";
 import Link from "next/link";
+import { FlashcardQuiz } from "@/components/vocabulary/flashcard-quiz";
 
 export default function VocabularyPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -33,6 +35,7 @@ export default function VocabularyPage() {
   const [filterPOS, setFilterPOS] = useState<string>("all");
   const [filterBook, setFilterBook] = useState<string>("all");
   const [filterMastered, setFilterMastered] = useState<string>("all");
+  const [showQuiz, setShowQuiz] = useState(false);
 
   // Debounce search input
   useEffect(() => {
@@ -97,19 +100,41 @@ export default function VocabularyPage() {
     toast.success("ลบคำศัพท์แล้ว");
   };
 
+  // Show quiz mode
+  if (showQuiz && filtered) {
+    return (
+      <FlashcardQuiz
+        vocabulary={filtered}
+        bookMap={bookMap as Map<number, string>}
+        onClose={() => setShowQuiz(false)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
-      <div>
-        <h1 className="flex items-center gap-2 text-2xl font-bold">
-          <Languages className="h-6 w-6" />
-          คลังคำศัพท์
-        </h1>
-        <p className="text-sm text-muted-foreground">
-          {vocabulary?.length ?? 0} คำ
-          {filtered && filtered.length !== vocabulary?.length
-            ? ` (แสดง ${filtered.length})`
-            : ""}
-        </p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="flex items-center gap-2 text-2xl font-bold">
+            <Languages className="h-6 w-6" />
+            คลังคำศัพท์
+          </h1>
+          <p className="text-sm text-muted-foreground">
+            {vocabulary?.length ?? 0} คำ
+            {filtered && filtered.length !== vocabulary?.length
+              ? ` (แสดง ${filtered.length})`
+              : ""}
+          </p>
+        </div>
+        {filtered && filtered.length > 0 && (
+          <Button
+            onClick={() => setShowQuiz(true)}
+            className="gap-2"
+          >
+            <GraduationCap className="h-4 w-4" />
+            ทบทวนคำศัพท์
+          </Button>
+        )}
       </div>
 
       {/* Filters */}

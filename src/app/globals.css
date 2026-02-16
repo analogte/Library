@@ -146,3 +146,19 @@
 .textLayer br::selection {
   background: rgba(0, 100, 255, 0.3);
 }
+
+/* Flashcard flip animation */
+.flashcard-container {
+  width: 100%;
+  max-width: 400px;
+}
+
+.flashcard-inner {
+  transform-style: preserve-3d;
+  transition: transform 0.5s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.flashcard-face {
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+}

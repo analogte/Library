@@ -4,15 +4,21 @@ import {
   useState,
   useEffect,
   useRef,
+  useCallback,
   forwardRef,
   useImperativeHandle,
 } from "react";
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { useSwipe } from "@/hooks/use-swipe";
+import type { ReaderSettings } from "@/lib/reader-settings";
+import { BG_PRESETS } from "@/lib/reader-settings";
+import type { Highlight } from "@/lib/types";
 
 export interface PdfReaderHandle {
   goToPage: (page: number) => void;
   getCurrentPage: () => number;
   getTotalPages: () => number;
+  getPdfDocument: () => PDFDocumentProxy | null;
 }
 
 interface PdfReaderProps {
@@ -20,10 +26,12 @@ interface PdfReaderProps {
   initialPage?: number;
   onPageChange?: (page: number, totalPages: number) => void;
   onTextSelect?: (text: string, rect: DOMRect) => void;
+  readerSettings?: ReaderSettings;
+  highlights?: Highlight[];
 }
 
 export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
-  function PdfReader({ fileData, initialPage = 1, onPageChange, onTextSelect }, ref) {
+  function PdfReader({ fileData, initialPage = 1, onPageChange, onTextSelect, readerSettings, highlights }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const textLayerRef = useRef<HTMLDivElement>(null);
@@ -43,6 +51,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       },
       getCurrentPage: () => currentPage,
       getTotalPages: () => totalPages,
+      getPdfDocument: () => pdf,
     }));
 
     // Load PDF — use Blob URL for streaming (much better for large files)
@@ -129,11 +138,32 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         });
         await tl.render();
 
+        // Apply saved highlights to text layer spans
+        if (highlights && highlights.length > 0) {
+          const pageHighlights = highlights.filter((h) => h.page === currentPage);
+          if (pageHighlights.length > 0) {
+            const spans = textLayer.querySelectorAll("span");
+            for (const hl of pageHighlights) {
+              const hlText = hl.text.toLowerCase();
+              spans.forEach((span) => {
+                const spanText = span.textContent?.toLowerCase() ?? "";
+                if (spanText && hlText.includes(spanText) && spanText.length > 1) {
+                  span.style.backgroundColor = hl.color + "66"; // add alpha
+                  span.style.borderRadius = "2px";
+                } else if (spanText && spanText.includes(hlText) && hlText.length > 1) {
+                  span.style.backgroundColor = hl.color + "66";
+                  span.style.borderRadius = "2px";
+                }
+              });
+            }
+          }
+        }
+
         onPageChange?.(currentPage, totalPages);
       })();
 
       return () => { cancelled = true; };
-    }, [pdf, currentPage, scale, totalPages, onPageChange]);
+    }, [pdf, currentPage, scale, totalPages, onPageChange, highlights]);
 
     // Text selection — debounced to avoid flickering during drag
     const selectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -170,6 +200,23 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       return () => window.removeEventListener("keydown", handleKeyDown);
     }, [totalPages]);
 
+    // Swipe & tap navigation for touch devices
+    const goNext = useCallback(() => {
+      setCurrentPage((p) => Math.min(p + 1, totalPages));
+    }, [totalPages]);
+
+    const goPrev = useCallback(() => {
+      setCurrentPage((p) => Math.max(p - 1, 1));
+    }, []);
+
+    useSwipe(containerRef, {
+      onSwipeLeft: goNext,
+      onSwipeRight: goPrev,
+      onTapLeft: goPrev,
+      onTapRight: goNext,
+      threshold: 50,
+    });
+
     if (loading) {
       return (
         <div className="flex h-full items-center justify-center">
@@ -187,13 +234,23 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       );
     }
 
+    const bgColors = readerSettings ? BG_PRESETS[readerSettings.bgPreset] : null;
+
     return (
-      <div ref={containerRef} className="flex h-full flex-col items-center overflow-auto bg-muted/30">
+      <div
+        ref={containerRef}
+        className="flex h-full flex-col items-center overflow-auto bg-muted/30"
+        style={bgColors ? { backgroundColor: bgColors.bg, color: bgColors.text } : undefined}
+      >
         <div className="relative my-4">
           <canvas ref={canvasRef} className="shadow-lg" />
           <div
             ref={textLayerRef}
             className="absolute inset-0 textLayer"
+            style={readerSettings ? {
+              fontSize: `${readerSettings.fontSize}px`,
+              lineHeight: `${readerSettings.lineHeight}`,
+            } : undefined}
             onMouseDown={handleTextMouseDown}
             onMouseUp={handleTextMouseUp}
           />

@@ -1,8 +1,9 @@
 "use client";
 
 import { useState, useEffect, useRef, useCallback } from "react";
+import { useLiveQuery } from "dexie-react-hooks";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Bookmark } from "lucide-react";
+import { ArrowLeft, Bookmark, Search, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
 import { PdfReader, type PdfReaderHandle } from "@/components/reader/pdf-reader";
@@ -10,7 +11,11 @@ import { EpubReader, type EpubReaderHandle } from "@/components/reader/epub-read
 import { SelectionMenu } from "@/components/reader/selection-menu";
 import { VocabDialog } from "@/components/reader/vocab-dialog";
 import { AiAssistant } from "@/components/reader/ai-assistant";
+import { ReaderSettingsPanel } from "@/components/reader/reader-settings-panel";
+import { BookSearchPanel } from "@/components/reader/book-search-panel";
 import type { Book } from "@/lib/types";
+import type { ReaderSettings } from "@/lib/reader-settings";
+import { getReaderSettings, DEFAULTS } from "@/lib/reader-settings";
 import { toast } from "sonner";
 
 export default function ReaderPage() {
@@ -40,6 +45,19 @@ export default function ReaderPage() {
   const [aiOpen, setAiOpen] = useState(false);
   const [aiText, setAiText] = useState("");
 
+  // Reader settings
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const [readerSettings, setReaderSettings] = useState<ReaderSettings>({ ...DEFAULTS });
+
+  // Book search
+  const [searchOpen, setSearchOpen] = useState(false);
+
+  // Load highlights for this book (reactive — updates when new highlights are added)
+  const highlights = useLiveQuery(
+    () => db.highlights.where("bookId").equals(bookId).toArray(),
+    [bookId]
+  );
+
   // Reader refs
   const pdfRef = useRef<PdfReaderHandle>(null);
   const epubRef = useRef<EpubReaderHandle>(null);
@@ -47,11 +65,68 @@ export default function ReaderPage() {
   // Save progress debounce ref
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // Reading session tracking
+  const sessionStartRef = useRef<Date | null>(null);
+
+  // Start reading session on mount, save on unmount
+  useEffect(() => {
+    sessionStartRef.current = new Date();
+
+    const saveSession = () => {
+      const startedAt = sessionStartRef.current;
+      if (!startedAt) return;
+      const endedAt = new Date();
+      const durationMs = endedAt.getTime() - startedAt.getTime();
+      const durationMinutes = durationMs / 60000;
+
+      // Ignore sessions shorter than 30 seconds
+      if (durationMs < 30000) return;
+
+      // Use sendBeacon with a workaround: save directly to IndexedDB
+      // Since we're in cleanup, we do a fire-and-forget add
+      db.readingSessions.add({
+        bookId,
+        startedAt,
+        endedAt,
+        durationMinutes: Math.round(durationMinutes * 100) / 100,
+      });
+    };
+
+    // Handle page visibility change (tab switch, minimize)
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        saveSession();
+        sessionStartRef.current = null;
+      } else if (document.visibilityState === "visible") {
+        sessionStartRef.current = new Date();
+      }
+    };
+
+    // Handle beforeunload (page close/refresh)
+    const handleBeforeUnload = () => {
+      saveSession();
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("beforeunload", handleBeforeUnload);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("beforeunload", handleBeforeUnload);
+      saveSession();
+    };
+  }, [bookId]);
+
   // Cleanup save timeout on unmount
   useEffect(() => {
     return () => {
       if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
     };
+  }, []);
+
+  // Load reader settings from IndexedDB
+  useEffect(() => {
+    getReaderSettings().then(setReaderSettings);
   }, []);
 
   // Load book + file + progress
@@ -206,6 +281,14 @@ export default function ReaderPage() {
     [bookId, currentPage, selectionCfiRange]
   );
 
+  // Search navigation handler
+  const handleSearchNavigate = useCallback(
+    (page: number) => {
+      pdfRef.current?.goToPage(page);
+    },
+    []
+  );
+
   // Add bookmark
   const handleAddBookmark = async () => {
     const existing = await db.bookmarks
@@ -258,6 +341,14 @@ export default function ReaderPage() {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{book.title}</p>
         </div>
+        {book.format === "pdf" && (
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSearchOpen(true)}>
+            <Search className="h-4 w-4" />
+          </Button>
+        )}
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSettingsOpen(true)}>
+          <Settings2 className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAddBookmark}>
           <Bookmark className="h-4 w-4" />
         </Button>
@@ -272,6 +363,8 @@ export default function ReaderPage() {
             initialPage={initialPage}
             onPageChange={handlePdfPageChange}
             onTextSelect={handlePdfTextSelect}
+            readerSettings={readerSettings}
+            highlights={highlights}
           />
         ) : (
           <EpubReader
@@ -314,6 +407,24 @@ export default function ReaderPage() {
         bookTitle={book.title}
         page={currentPage}
       />
+
+      {/* Reader settings panel */}
+      <ReaderSettingsPanel
+        open={settingsOpen}
+        onOpenChange={setSettingsOpen}
+        settings={readerSettings}
+        onSettingsChange={setReaderSettings}
+      />
+
+      {/* Book search panel (PDF only) */}
+      {book.format === "pdf" && (
+        <BookSearchPanel
+          open={searchOpen}
+          onOpenChange={setSearchOpen}
+          pdfDocument={pdfRef.current?.getPdfDocument() ?? null}
+          onNavigate={handleSearchNavigate}
+        />
+      )}
     </div>
   );
 }

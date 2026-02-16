@@ -90,6 +90,14 @@ export interface VocabularyEntry {
   updatedAt: Date;
 }
 
+export interface ReadingSession {
+  id?: number;
+  bookId: number;
+  startedAt: Date;
+  endedAt: Date;
+  durationMinutes: number;
+}
+
 export interface AppSetting {
   key: string;
   value: string;

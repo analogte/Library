@@ -6,6 +6,7 @@ import type {
   Bookmark,
   Highlight,
   VocabularyEntry,
+  ReadingSession,
   AppSetting,
 } from "./types";
 
@@ -16,6 +17,7 @@ class LibraryDB extends Dexie {
   bookmarks!: Table<Bookmark, number>;
   highlights!: Table<Highlight, number>;
   vocabulary!: Table<VocabularyEntry, number>;
+  readingSessions!: Table<ReadingSession, number>;
   appSettings!: Table<AppSetting, string>;
 
   constructor() {
@@ -27,6 +29,16 @@ class LibraryDB extends Dexie {
       bookmarks: "++id, bookId, page",
       highlights: "++id, bookId, page",
       vocabulary: "++id, word, bookId, partOfSpeech, mastered, language, createdAt",
+      appSettings: "key",
+    });
+    this.version(4).stores({
+      books: "++id, title, author, format, status, addedAt, updatedAt",
+      bookFiles: "++id, bookId",
+      readingProgress: "++id, bookId",
+      bookmarks: "++id, bookId, page",
+      highlights: "++id, bookId, page",
+      vocabulary: "++id, word, bookId, partOfSpeech, mastered, language, createdAt",
+      readingSessions: "++id, bookId, startedAt, endedAt, durationMinutes",
       appSettings: "key",
     });
   }
