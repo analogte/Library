@@ -135,9 +135,12 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       return () => { cancelled = true; };
     }, [pdf, currentPage, scale, totalPages, onPageChange]);
 
-    // Text selection handler — inline on the div, not useEffect
+    // Text selection — debounced to avoid flickering during drag
+    const selectionTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
     const handleTextMouseUp = () => {
-      setTimeout(() => {
+      if (selectionTimerRef.current) clearTimeout(selectionTimerRef.current);
+      selectionTimerRef.current = setTimeout(() => {
         const selection = window.getSelection();
         if (!selection || selection.isCollapsed) return;
         const text = selection.toString().trim();
@@ -146,7 +149,12 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
         onTextSelect?.(text, rect);
-      }, 10);
+      }, 250);
+    };
+
+    const handleTextMouseDown = () => {
+      // Clear pending selection timer when starting new drag
+      if (selectionTimerRef.current) clearTimeout(selectionTimerRef.current);
     };
 
     // Keyboard navigation
@@ -186,6 +194,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
           <div
             ref={textLayerRef}
             className="absolute inset-0 textLayer"
+            onMouseDown={handleTextMouseDown}
             onMouseUp={handleTextMouseUp}
           />
         </div>

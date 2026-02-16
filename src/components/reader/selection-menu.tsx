@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef, useLayoutEffect } from "react";
 import {
   Languages,
   BookmarkPlus,
@@ -34,11 +34,35 @@ export function SelectionMenu({
   const [translating, setTranslating] = useState(false);
   const [translation, setTranslation] = useState("");
   const [detectedLang, setDetectedLang] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
+  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
-  // Position the menu: prefer above selection, fall back to below if near top
-  const showBelow = rect.top < 200;
-  const menuTop = showBelow ? rect.bottom + 8 : rect.top - 8;
-  const menuLeft = Math.max(160, Math.min(rect.left + rect.width / 2, window.innerWidth - 160));
+  // Calculate position — keep the entire menu within viewport
+  useLayoutEffect(() => {
+    const el = menuRef.current;
+    if (!el) return;
+
+    const menuHeight = el.offsetHeight;
+    const menuWidth = el.offsetWidth;
+    const padding = 8;
+
+    // Horizontal: center on selection, clamp to viewport
+    let left = rect.left + rect.width / 2 - menuWidth / 2;
+    left = Math.max(padding, Math.min(left, window.innerWidth - menuWidth - padding));
+
+    // Vertical: prefer below selection, fallback above
+    let top = rect.bottom + padding;
+    if (top + menuHeight > window.innerHeight - padding) {
+      // Doesn't fit below — try above
+      top = rect.top - menuHeight - padding;
+    }
+    if (top < padding) {
+      // Doesn't fit above either — pin to top
+      top = padding;
+    }
+
+    setPos({ top, left });
+  }, [rect, showTranslation, translating, translation]);
 
   const handleTranslate = async () => {
     setShowTranslation(true);
@@ -68,7 +92,6 @@ export function SelectionMenu({
         onClose();
       }
     };
-    // Delay to prevent immediate close
     const timer = setTimeout(() => {
       document.addEventListener("mousedown", handleClick);
     }, 100);
@@ -80,21 +103,22 @@ export function SelectionMenu({
 
   return (
     <div
+      ref={menuRef}
       data-selection-menu
-      className="fixed z-50"
+      className="fixed z-50 max-w-sm transition-opacity duration-100"
       style={{
-        top: `${menuTop}px`,
-        left: `${menuLeft}px`,
-        transform: showBelow ? "translate(-50%, 0%)" : "translate(-50%, -100%)",
+        top: pos ? `${pos.top}px` : `${rect.bottom + 8}px`,
+        left: pos ? `${pos.left}px` : `${rect.left}px`,
+        opacity: pos ? 1 : 0,
       }}
     >
       {/* Translation popup */}
       {showTranslation && (
-        <Card className="mb-2 max-w-sm p-3">
+        <Card className="mb-2 p-3">
           <div className="flex items-start justify-between gap-2">
             <div className="flex-1 min-w-0">
-              <p className="text-xs text-muted-foreground truncate">
-                {text.length > 100 ? text.slice(0, 100) + "..." : text}
+              <p className="text-xs text-muted-foreground line-clamp-2">
+                {text}
               </p>
               {translating ? (
                 <div className="mt-2 flex items-center gap-2 text-sm">
@@ -103,7 +127,7 @@ export function SelectionMenu({
                 </div>
               ) : (
                 <>
-                  <p className="mt-1 text-sm font-medium">{translation}</p>
+                  <p className="mt-1 max-h-[30vh] overflow-y-auto text-sm font-medium">{translation}</p>
                   {detectedLang && (
                     <p className="mt-0.5 text-[10px] text-muted-foreground">
                       ภาษาต้นทาง: {detectedLang}
@@ -112,7 +136,7 @@ export function SelectionMenu({
                 </>
               )}
             </div>
-            <button onClick={onClose} className="text-muted-foreground hover:text-foreground">
+            <button onClick={onClose} className="shrink-0 text-muted-foreground hover:text-foreground">
               <X className="h-3 w-3" />
             </button>
           </div>
