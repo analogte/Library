@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Bookmark, BookOpen, Search, Settings2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookOpen, FileText, Search, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -371,6 +371,9 @@ export default function ReaderPage() {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{book.title}</p>
         </div>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(`/notes/${bookId}`)}>
+          <FileText className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSearchOpen(true)}>
           <Search className="h-4 w-4" />
         </Button>

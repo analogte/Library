@@ -98,6 +98,15 @@ export interface ReadingSession {
   durationMinutes: number;
 }
 
+export interface BookNote {
+  id?: number;
+  bookId: number;
+  title: string;
+  content: string;
+  createdAt: Date;
+  updatedAt: Date;
+}
+
 export interface AppSetting {
   key: string;
   value: string;

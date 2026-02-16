@@ -2,11 +2,12 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, Search, Languages, Settings } from "lucide-react";
+import { BookOpen, FileText, Search, Languages, Settings } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 const NAV_ITEMS = [
   { href: "/", label: "ห้องสมุด", icon: BookOpen },
+  { href: "/notes", label: "บันทึก", icon: FileText },
   { href: "/search", label: "ค้นหา", icon: Search },
   { href: "/vocabulary", label: "คำศัพท์", icon: Languages },
   { href: "/settings", label: "ตั้งค่า", icon: Settings },

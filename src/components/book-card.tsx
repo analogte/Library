@@ -110,6 +110,10 @@ export function BookCard({ book, progress, onDelete, onStatusChange }: BookCardP
           </Button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end">
+          <DropdownMenuItem onClick={() => router.push(`/notes/${book.id}`)}>
+            <FileText className="mr-2 h-4 w-4" />
+            บันทึก
+          </DropdownMenuItem>
           <DropdownMenuItem onClick={() => onStatusChange?.(book.id!, "reading")}>
             <BookOpen className="mr-2 h-4 w-4" />
             กำลังอ่าน
