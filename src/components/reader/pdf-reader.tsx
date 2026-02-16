@@ -47,6 +47,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     const pdfjsLibRef = useRef<typeof import("pdfjs-dist") | null>(null);
     const blobUrlRef = useRef<string | null>(null);
     const selectionCleanupRef = useRef<(() => void) | null>(null);
+    const pendingSelectionRef = useRef<{ text: string; rect: DOMRect } | null>(null);
 
     // Page prefetch cache — เก็บ ImageBitmap ของหน้าที่ render แล้ว
     const PREFETCH_AHEAD = 3;
@@ -250,7 +251,21 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         // Global events สำหรับ smooth selection
         let isPointerDown = false;
         document.addEventListener("pointerdown", () => { isPointerDown = true; }, { signal });
-        document.addEventListener("pointerup", () => { isPointerDown = false; resetSelection(); }, { signal });
+        document.addEventListener("pointerup", () => {
+          // Capture selection BEFORE DOM reset (pointerup fires before mouseup)
+          const sel = document.getSelection();
+          if (sel && !sel.isCollapsed && sel.rangeCount > 0) {
+            const range = sel.getRangeAt(0);
+            if (range.intersectsNode(textLayer)) {
+              const text = sel.toString().trim();
+              if (text) {
+                pendingSelectionRef.current = { text, rect: range.getBoundingClientRect() };
+              }
+            }
+          }
+          isPointerDown = false;
+          resetSelection();
+        }, { signal });
         window.addEventListener("blur", () => { isPointerDown = false; resetSelection(); }, { signal });
         document.addEventListener("keyup", () => { if (!isPointerDown) resetSelection(); }, { signal });
 
@@ -342,6 +357,14 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     const handleTextMouseUp = () => {
       if (selectionTimerRef.current) clearTimeout(selectionTimerRef.current);
       selectionTimerRef.current = setTimeout(() => {
+        // Use selection captured in pointerup (before DOM reset altered it)
+        const pending = pendingSelectionRef.current;
+        pendingSelectionRef.current = null;
+        if (pending) {
+          onTextSelect?.(pending.text, pending.rect);
+          return;
+        }
+        // Fallback to current selection
         const selection = window.getSelection();
         if (!selection || selection.isCollapsed) return;
         const text = selection.toString().trim();
@@ -354,8 +377,9 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     };
 
     const handleTextMouseDown = () => {
-      // Clear pending selection timer when starting new drag
+      // Clear pending selection when starting new drag
       if (selectionTimerRef.current) clearTimeout(selectionTimerRef.current);
+      pendingSelectionRef.current = null;
     };
 
     // Click on highlighted span → show delete popup
