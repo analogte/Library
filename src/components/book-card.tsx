@@ -1,6 +1,6 @@
 "use client";
 
-import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { FileText, BookOpen, MoreVertical, Trash2, CheckCircle } from "lucide-react";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -29,9 +29,19 @@ interface BookCardProps {
 }
 
 export function BookCard({ book, progress, onDelete, onStatusChange }: BookCardProps) {
+  const router = useRouter();
+
   return (
-    <Card className="group relative overflow-hidden transition-shadow hover:shadow-lg">
-      <Link href={`/reader/${book.id}`} className="block">
+    <Card
+      className="group relative cursor-pointer overflow-hidden transition-shadow hover:shadow-lg"
+      onClick={(e) => {
+        // Don't navigate if clicking dropdown menu
+        const target = e.target as HTMLElement;
+        if (target.closest("button") || target.closest("[role='menu']")) return;
+        router.push(`/reader/${book.id}`);
+      }}
+    >
+      <div className="block">
         {/* Cover */}
         <div className="relative aspect-[2/3] w-full overflow-hidden bg-muted">
           {book.coverImage ? (
@@ -86,7 +96,7 @@ export function BookCard({ book, progress, onDelete, onStatusChange }: BookCardP
             )}
           </div>
         </div>
-      </Link>
+      </div>
 
       {/* Actions dropdown */}
       <DropdownMenu>

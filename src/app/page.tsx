@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { useLiveQuery } from "dexie-react-hooks";
 import { BookOpen, Library } from "lucide-react";
 import { db } from "@/lib/db";
@@ -11,11 +12,11 @@ import { Progress } from "@/components/ui/progress";
 import { Badge } from "@/components/ui/badge";
 import { toast } from "sonner";
 import type { Book } from "@/lib/types";
-import Link from "next/link";
 
 type FilterStatus = "all" | "unread" | "reading" | "finished";
 
 export default function LibraryPage() {
+  const router = useRouter();
   const [filter, setFilter] = useState<FilterStatus>("all");
   const [refreshKey, setRefreshKey] = useState(0);
 
@@ -86,10 +87,10 @@ export default function LibraryPage() {
             {readingBooks.map((book) => {
               const progress = readingProgress?.get(book.id!) ?? 0;
               return (
-                <Link
+                <div
                   key={book.id}
-                  href={`/reader/${book.id}`}
-                  className="flex w-64 flex-shrink-0 items-center gap-3 rounded-lg border bg-card p-3 transition-colors hover:bg-accent"
+                  onClick={() => router.push(`/reader/${book.id}`)}
+                  className="flex w-64 flex-shrink-0 cursor-pointer items-center gap-3 rounded-lg border bg-card p-3 transition-colors hover:bg-accent"
                 >
                   {book.coverImage ? (
                     <img
@@ -114,7 +115,7 @@ export default function LibraryPage() {
                       </span>
                     </div>
                   </div>
-                </Link>
+                </div>
               );
             })}
           </div>

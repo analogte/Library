@@ -20,6 +20,7 @@ export default function ReaderPage() {
   const [book, setBook] = useState<Book | null>(null);
   const [fileData, setFileData] = useState<Blob | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
   const [initialPage, setInitialPage] = useState(1);
   const [initialCfi, setInitialCfi] = useState("");
 
@@ -50,40 +51,53 @@ export default function ReaderPage() {
 
   // Load book + file + progress
   useEffect(() => {
+    let cancelled = false;
     (async () => {
-      const b = await db.books.get(bookId);
-      if (!b) {
-        toast.error("ไม่พบหนังสือ");
-        router.push("/");
-        return;
-      }
-      setBook(b);
+      try {
+        const b = await db.books.get(bookId);
+        if (cancelled) return;
+        if (!b) {
+          toast.error("ไม่พบหนังสือ");
+          router.push("/");
+          return;
+        }
+        setBook(b);
 
-      // Mark as reading
-      if (b.status === "unread") {
-        await db.books.update(bookId, { status: "reading", updatedAt: new Date() });
-      }
+        // Mark as reading
+        if (b.status === "unread") {
+          await db.books.update(bookId, { status: "reading", updatedAt: new Date() });
+        }
 
-      const fileRecord = await db.bookFiles.where("bookId").equals(bookId).first();
-      if (!fileRecord) {
-        toast.error("ไม่พบไฟล์หนังสือ");
-        router.push("/");
-        return;
-      }
-      setFileData(fileRecord.fileData);
+        const fileRecord = await db.bookFiles.where("bookId").equals(bookId).first();
+        if (cancelled) return;
+        if (!fileRecord) {
+          toast.error("ไม่พบไฟล์หนังสือ");
+          router.push("/");
+          return;
+        }
+        setFileData(fileRecord.fileData);
 
-      // Load progress
-      const progress = await db.readingProgress.where("bookId").equals(bookId).first();
-      if (progress) {
-        if (b.format === "pdf") {
-          setInitialPage(progress.currentPage || 1);
-        } else {
-          setInitialCfi(progress.lastPosition ?? "");
+        // Load progress
+        const progress = await db.readingProgress.where("bookId").equals(bookId).first();
+        if (cancelled) return;
+        if (progress) {
+          if (b.format === "pdf") {
+            setInitialPage(progress.currentPage || 1);
+          } else {
+            setInitialCfi(progress.lastPosition ?? "");
+          }
+        }
+
+        setLoading(false);
+      } catch (err) {
+        if (!cancelled) {
+          console.error("Failed to load book:", err);
+          setError("ไม่สามารถโหลดหนังสือได้ ลองรีเฟรชหน้า");
+          setLoading(false);
         }
       }
-
-      setLoading(false);
     })();
+    return () => { cancelled = true; };
   }, [bookId, router]);
 
   // Save reading progress (debounced)
@@ -202,6 +216,18 @@ export default function ReaderPage() {
       toast.success("บุ๊กมาร์กแล้ว");
     }
   };
+
+  if (error) {
+    return (
+      <div className="flex h-dvh flex-col items-center justify-center gap-3">
+        <p className="text-destructive">{error}</p>
+        <div className="flex gap-2">
+          <Button variant="outline" onClick={() => router.push("/")}>กลับหน้าหลัก</Button>
+          <Button onClick={() => window.location.reload()}>ลองใหม่</Button>
+        </div>
+      </div>
+    );
+  }
 
   if (loading || !book || !fileData) {
     return (

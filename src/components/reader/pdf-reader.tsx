@@ -32,8 +32,10 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     const [totalPages, setTotalPages] = useState(0);
     const [scale, setScale] = useState(1.5);
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState("");
     const renderTaskRef = useRef<ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]> | null>(null);
     const pdfjsLibRef = useRef<typeof import("pdfjs-dist") | null>(null);
+    const blobUrlRef = useRef<string | null>(null);
 
     useImperativeHandle(ref, () => ({
       goToPage: (page: number) => {
@@ -43,23 +45,40 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       getTotalPages: () => totalPages,
     }));
 
-    // Load PDF
+    // Load PDF — use Blob URL for streaming (much better for large files)
     useEffect(() => {
       let cancelled = false;
       (async () => {
-        const pdfjsLib = await import("pdfjs-dist");
-        pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
-        pdfjsLibRef.current = pdfjsLib;
+        try {
+          const pdfjsLib = await import("pdfjs-dist");
+          pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+          pdfjsLibRef.current = pdfjsLib;
 
-        const arrayBuffer = await fileData.arrayBuffer();
-        const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
-        if (!cancelled) {
-          setPdf(doc);
-          setTotalPages(doc.numPages);
-          setLoading(false);
+          // Use Blob URL instead of arrayBuffer — streams data, much faster for large files
+          const url = URL.createObjectURL(fileData);
+          blobUrlRef.current = url;
+
+          const doc = await pdfjsLib.getDocument(url).promise;
+          if (!cancelled) {
+            setPdf(doc);
+            setTotalPages(doc.numPages);
+            setLoading(false);
+          }
+        } catch (err) {
+          if (!cancelled) {
+            console.error("PDF load error:", err);
+            setError("ไม่สามารถโหลด PDF ได้");
+            setLoading(false);
+          }
         }
       })();
-      return () => { cancelled = true; };
+      return () => {
+        cancelled = true;
+        if (blobUrlRef.current) {
+          URL.revokeObjectURL(blobUrlRef.current);
+          blobUrlRef.current = null;
+        }
+      };
     }, [fileData]);
 
     // Render page
@@ -147,6 +166,15 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       return (
         <div className="flex h-full items-center justify-center">
           <p className="text-muted-foreground">กำลังโหลด PDF...</p>
+        </div>
+      );
+    }
+
+    if (error) {
+      return (
+        <div className="flex h-full flex-col items-center justify-center gap-2">
+          <p className="text-destructive">{error}</p>
+          <button onClick={() => window.location.reload()} className="text-sm underline">ลองใหม่</button>
         </div>
       );
     }
