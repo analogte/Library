@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import {
   Dialog,
   DialogContent,
@@ -48,10 +48,10 @@ export function VocabDialog({
   const [saving, setSaving] = useState(false);
 
   // Reset when props change
-  useState(() => {
+  useEffect(() => {
     setWord(initialWord);
     setMeaning(initialMeaning);
-  });
+  }, [initialWord, initialMeaning]);
 
   const handleSave = async () => {
     if (!word.trim()) {

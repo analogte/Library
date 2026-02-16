@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { Search as SearchIcon, BookOpen, Languages } from "lucide-react";
 import { db } from "@/lib/db";
@@ -14,10 +14,17 @@ import Link from "next/link";
 
 export default function SearchPage() {
   const [query, setQuery] = useState("");
+  const [debouncedQuery, setDebouncedQuery] = useState("");
+
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedQuery(query), 300);
+    return () => clearTimeout(timer);
+  }, [query]);
 
   const books = useLiveQuery(async () => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
+    if (!debouncedQuery.trim()) return [];
+    const q = debouncedQuery.toLowerCase();
     const all = await db.books.toArray();
     return all.filter(
       (b) =>
@@ -25,11 +32,11 @@ export default function SearchPage() {
         b.author.toLowerCase().includes(q) ||
         b.tags?.some((t) => t.toLowerCase().includes(q))
     );
-  }, [query]);
+  }, [debouncedQuery]);
 
   const vocab = useLiveQuery(async () => {
-    if (!query.trim()) return [];
-    const q = query.toLowerCase();
+    if (!debouncedQuery.trim()) return [];
+    const q = debouncedQuery.toLowerCase();
     const all = await db.vocabulary.toArray();
     return all
       .filter(
@@ -38,7 +45,7 @@ export default function SearchPage() {
           v.meaning.toLowerCase().includes(q)
       )
       .slice(0, 20);
-  }, [query]);
+  }, [debouncedQuery]);
 
   return (
     <div className="space-y-6">

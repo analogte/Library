@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import {
   Languages,
@@ -29,34 +29,60 @@ import Link from "next/link";
 
 export default function VocabularyPage() {
   const [searchQuery, setSearchQuery] = useState("");
+  const [debouncedSearch, setDebouncedSearch] = useState("");
   const [filterPOS, setFilterPOS] = useState<string>("all");
   const [filterBook, setFilterBook] = useState<string>("all");
   const [filterMastered, setFilterMastered] = useState<string>("all");
 
+  // Debounce search input
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(searchQuery), 300);
+    return () => clearTimeout(timer);
+  }, [searchQuery]);
+
   const vocabulary = useLiveQuery(
-    () => db.vocabulary.orderBy("createdAt").reverse().toArray(),
-    []
+    async () => {
+      let collection = db.vocabulary.orderBy("createdAt").reverse();
+
+      // Apply indexed filters at Dexie level
+      if (filterMastered === "mastered") {
+        collection = db.vocabulary.where("mastered").equals(1).reverse();
+      } else if (filterMastered === "learning") {
+        collection = db.vocabulary.where("mastered").equals(0).reverse();
+      }
+
+      let results = await collection.toArray();
+
+      // Apply non-indexed filters in JS
+      if (filterPOS !== "all") {
+        results = results.filter((v) => v.partOfSpeech === filterPOS);
+      }
+      if (filterBook !== "all") {
+        results = results.filter((v) => String(v.bookId) === filterBook);
+      }
+
+      return results;
+    },
+    [filterPOS, filterBook, filterMastered]
   );
 
   const books = useLiveQuery(() => db.books.toArray(), []);
 
-  const bookMap = new Map(books?.map((b) => [b.id, b.title]) ?? []);
+  const bookMap = useMemo(
+    () => new Map(books?.map((b) => [b.id, b.title]) ?? []),
+    [books]
+  );
 
-  const filtered = vocabulary?.filter((v) => {
-    if (searchQuery) {
-      const q = searchQuery.toLowerCase();
-      if (
-        !v.word.toLowerCase().includes(q) &&
-        !v.meaning.toLowerCase().includes(q)
-      )
-        return false;
-    }
-    if (filterPOS !== "all" && v.partOfSpeech !== filterPOS) return false;
-    if (filterBook !== "all" && String(v.bookId) !== filterBook) return false;
-    if (filterMastered === "mastered" && !v.mastered) return false;
-    if (filterMastered === "learning" && v.mastered) return false;
-    return true;
-  });
+  const filtered = useMemo(() => {
+    if (!vocabulary) return undefined;
+    if (!debouncedSearch) return vocabulary;
+    const q = debouncedSearch.toLowerCase();
+    return vocabulary.filter(
+      (v) =>
+        v.word.toLowerCase().includes(q) ||
+        v.meaning.toLowerCase().includes(q)
+    );
+  }, [vocabulary, debouncedSearch]);
 
   const toggleMastered = async (id: number, current: boolean) => {
     await db.vocabulary.update(id, {

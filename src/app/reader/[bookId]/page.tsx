@@ -2,14 +2,14 @@
 
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Bookmark, BookOpen, Settings2 } from "lucide-react";
+import { ArrowLeft, Bookmark } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { db } from "@/lib/db";
 import { PdfReader, type PdfReaderHandle } from "@/components/reader/pdf-reader";
 import { EpubReader, type EpubReaderHandle } from "@/components/reader/epub-reader";
 import { SelectionMenu } from "@/components/reader/selection-menu";
 import { VocabDialog } from "@/components/reader/vocab-dialog";
-import type { Book, Highlight } from "@/lib/types";
+import type { Book } from "@/lib/types";
 import { toast } from "sonner";
 
 export default function ReaderPage() {
@@ -40,6 +40,13 @@ export default function ReaderPage() {
 
   // Save progress debounce ref
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  // Cleanup save timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (saveTimeoutRef.current) clearTimeout(saveTimeoutRef.current);
+    };
+  }, []);
 
   // Load book + file + progress
   useEffect(() => {

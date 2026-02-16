@@ -14,7 +14,6 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { Separator } from "@/components/ui/separator";
 import { db } from "@/lib/db";
 import { toast } from "sonner";
 
@@ -60,7 +59,8 @@ export default function SettingsPage() {
       a.click();
       URL.revokeObjectURL(url);
       toast.success("ส่งออกข้อมูลสำเร็จ");
-    } catch {
+    } catch (err) {
+      console.error("Export failed:", err);
       toast.error("ส่งออกข้อมูลล้มเหลว");
     }
   };
@@ -75,8 +75,15 @@ export default function SettingsPage() {
       try {
         const text = await file.text();
         const data = JSON.parse(text);
-        if (!data.version || !data.books) {
-          toast.error("ไฟล์ backup ไม่ถูกต้อง");
+        if (
+          !data.version ||
+          !Array.isArray(data.books) ||
+          (data.readingProgress && !Array.isArray(data.readingProgress)) ||
+          (data.bookmarks && !Array.isArray(data.bookmarks)) ||
+          (data.highlights && !Array.isArray(data.highlights)) ||
+          (data.vocabulary && !Array.isArray(data.vocabulary))
+        ) {
+          toast.error("ไฟล์ backup ไม่ถูกต้อง — รูปแบบข้อมูลไม่ตรงกัน");
           return;
         }
 
@@ -106,8 +113,13 @@ export default function SettingsPage() {
         );
         toast.success("นำเข้าข้อมูลสำเร็จ");
         window.location.reload();
-      } catch {
-        toast.error("นำเข้าข้อมูลล้มเหลว");
+      } catch (err) {
+        console.error("Import failed:", err);
+        toast.error(
+          err instanceof SyntaxError
+            ? "ไฟล์ JSON ไม่ถูกต้อง"
+            : "นำเข้าข้อมูลล้มเหลว"
+        );
       }
     };
     input.click();

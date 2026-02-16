@@ -125,6 +125,7 @@ export async function deleteBook(bookId: number): Promise<void> {
     await db.readingProgress.where("bookId").equals(bookId).delete();
     await db.bookmarks.where("bookId").equals(bookId).delete();
     await db.highlights.where("bookId").equals(bookId).delete();
+    await db.vocabulary.where("bookId").equals(bookId).delete();
   });
 }
 

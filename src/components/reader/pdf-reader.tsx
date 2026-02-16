@@ -4,7 +4,6 @@ import {
   useState,
   useEffect,
   useRef,
-  useCallback,
   forwardRef,
   useImperativeHandle,
 } from "react";
@@ -34,6 +33,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     const [scale, setScale] = useState(1.5);
     const [loading, setLoading] = useState(true);
     const renderTaskRef = useRef<ReturnType<Awaited<ReturnType<PDFDocumentProxy["getPage"]>>["render"]> | null>(null);
+    const pdfjsLibRef = useRef<typeof import("pdfjs-dist") | null>(null);
 
     useImperativeHandle(ref, () => ({
       goToPage: (page: number) => {
@@ -49,6 +49,7 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       (async () => {
         const pdfjsLib = await import("pdfjs-dist");
         pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.mjs`;
+        pdfjsLibRef.current = pdfjsLib;
 
         const arrayBuffer = await fileData.arrayBuffer();
         const doc = await pdfjsLib.getDocument({ data: arrayBuffer }).promise;
@@ -101,8 +102,8 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         textLayer.style.width = `${viewport.width}px`;
         textLayer.style.height = `${viewport.height}px`;
 
-        const pdfjsLib = await import("pdfjs-dist");
-        const tl = new pdfjsLib.TextLayer({
+        if (!pdfjsLibRef.current) return;
+        const tl = new pdfjsLibRef.current.TextLayer({
           textContentSource: textContent,
           container: textLayer,
           viewport,

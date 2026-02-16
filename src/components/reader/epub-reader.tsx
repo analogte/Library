@@ -7,7 +7,6 @@ import {
   forwardRef,
   useImperativeHandle,
 } from "react";
-import type ePub from "epubjs";
 import type { Rendition, Book as EpubBook } from "epubjs";
 
 export interface EpubReaderHandle {
@@ -33,6 +32,10 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
     const viewerRef = useRef<HTMLDivElement>(null);
     const bookRef = useRef<EpubBook | null>(null);
     const renditionRef = useRef<Rendition | null>(null);
+    const onLocationChangeRef = useRef(onLocationChange);
+    const onTextSelectRef = useRef(onTextSelect);
+    onLocationChangeRef.current = onLocationChange;
+    onTextSelectRef.current = onTextSelect;
     const [loading, setLoading] = useState(true);
     const [currentCfi, setCurrentCfi] = useState(initialLocation ?? "");
     const [toc, setToc] = useState<{ label: string; href: string }[]>([]);
@@ -103,7 +106,7 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
           const cfi = location.start.cfi;
           const pct = location.start.percentage * 100;
           setCurrentCfi(cfi);
-          onLocationChange?.(cfi, pct);
+          onLocationChangeRef.current?.(cfi, pct);
         });
 
         // Text selection
@@ -126,9 +129,9 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
               rect.width,
               rect.height
             );
-            onTextSelect?.(text, cfiRange, adjustedRect);
+            onTextSelectRef.current?.(text, cfiRange, adjustedRect);
           } else {
-            onTextSelect?.(text, cfiRange, rect);
+            onTextSelectRef.current?.(text, cfiRange, rect);
           }
         });
 
