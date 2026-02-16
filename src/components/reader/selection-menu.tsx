@@ -9,6 +9,9 @@ import {
   Loader2,
   X,
   Plus,
+  Volume2,
+  VolumeX,
+  Bot,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -21,6 +24,7 @@ interface SelectionMenuProps {
   onClose: () => void;
   onSaveVocab: (text: string, translation: string) => void;
   onHighlight?: (text: string) => void;
+  onAskAI?: () => void;
 }
 
 export function SelectionMenu({
@@ -29,11 +33,13 @@ export function SelectionMenu({
   onClose,
   onSaveVocab,
   onHighlight,
+  onAskAI,
 }: SelectionMenuProps) {
   const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translation, setTranslation] = useState("");
   const [detectedLang, setDetectedLang] = useState("");
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -46,23 +52,26 @@ export function SelectionMenu({
     const menuWidth = el.offsetWidth;
     const padding = 8;
 
-    // Horizontal: center on selection, clamp to viewport
     let left = rect.left + rect.width / 2 - menuWidth / 2;
     left = Math.max(padding, Math.min(left, window.innerWidth - menuWidth - padding));
 
-    // Vertical: prefer below selection, fallback above
     let top = rect.bottom + padding;
     if (top + menuHeight > window.innerHeight - padding) {
-      // Doesn't fit below — try above
       top = rect.top - menuHeight - padding;
     }
     if (top < padding) {
-      // Doesn't fit above either — pin to top
       top = padding;
     }
 
     setPos({ top, left });
   }, [rect, showTranslation, translating, translation]);
+
+  // Stop TTS on unmount
+  useEffect(() => {
+    return () => {
+      window.speechSynthesis?.cancel();
+    };
+  }, []);
 
   const handleTranslate = async () => {
     setShowTranslation(true);
@@ -76,6 +85,29 @@ export function SelectionMenu({
     } finally {
       setTranslating(false);
     }
+  };
+
+  const handleSpeak = () => {
+    if (!window.speechSynthesis) {
+      toast.error("เบราว์เซอร์ไม่รองรับ Text-to-Speech");
+      return;
+    }
+
+    if (isSpeaking) {
+      window.speechSynthesis.cancel();
+      setIsSpeaking(false);
+      return;
+    }
+
+    const utterance = new SpeechSynthesisUtterance(text);
+    utterance.lang = "en-US";
+    utterance.rate = 0.9;
+    utterance.onend = () => setIsSpeaking(false);
+    utterance.onerror = () => setIsSpeaking(false);
+
+    window.speechSynthesis.cancel();
+    window.speechSynthesis.speak(utterance);
+    setIsSpeaking(true);
   };
 
   const handleCopy = async () => {
@@ -105,7 +137,7 @@ export function SelectionMenu({
     <div
       ref={menuRef}
       data-selection-menu
-      className="fixed z-50 max-w-sm transition-opacity duration-100"
+      className="fixed z-50 max-w-md transition-opacity duration-100"
       style={{
         top: pos ? `${pos.top}px` : `${rect.bottom + 8}px`,
         left: pos ? `${pos.left}px` : `${rect.left}px`,
@@ -154,39 +186,57 @@ export function SelectionMenu({
         </Card>
       )}
 
-      {/* Action buttons */}
-      <Card className="flex items-center gap-1 p-1">
-        <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={handleTranslate}>
-          <Languages className="mr-1 h-3.5 w-3.5" />
-          แปล
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-8 px-2 text-xs"
-          onClick={() => onSaveVocab(text, translation)}
-        >
-          <BookmarkPlus className="mr-1 h-3.5 w-3.5" />
-          บันทึก
-        </Button>
-        {onHighlight && (
+      {/* Action buttons — 2 rows */}
+      <Card className="p-1">
+        <div className="flex items-center gap-1">
+          <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={handleTranslate}>
+            <Languages className="mr-1 h-3.5 w-3.5" />
+            แปล
+          </Button>
+          <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={handleSpeak}>
+            {isSpeaking ? (
+              <VolumeX className="mr-1 h-3.5 w-3.5" />
+            ) : (
+              <Volume2 className="mr-1 h-3.5 w-3.5" />
+            )}
+            ฟัง
+          </Button>
           <Button
             size="sm"
             variant="ghost"
             className="h-8 px-2 text-xs"
-            onClick={() => {
-              onHighlight(text);
-              onClose();
-            }}
+            onClick={() => onSaveVocab(text, translation)}
           >
-            <Highlighter className="mr-1 h-3.5 w-3.5" />
-            ไฮไลท์
+            <BookmarkPlus className="mr-1 h-3.5 w-3.5" />
+            บันทึก
           </Button>
-        )}
-        <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={handleCopy}>
-          <Copy className="mr-1 h-3.5 w-3.5" />
-          คัดลอก
-        </Button>
+          {onHighlight && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="h-8 px-2 text-xs"
+              onClick={() => {
+                onHighlight(text);
+                onClose();
+              }}
+            >
+              <Highlighter className="mr-1 h-3.5 w-3.5" />
+              ไฮไลท์
+            </Button>
+          )}
+        </div>
+        <div className="flex items-center gap-1 border-t mt-1 pt-1">
+          {onAskAI && (
+            <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={onAskAI}>
+              <Bot className="mr-1 h-3.5 w-3.5" />
+              ถาม AI
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={handleCopy}>
+            <Copy className="mr-1 h-3.5 w-3.5" />
+            คัดลอก
+          </Button>
+        </div>
       </Card>
     </div>
   );

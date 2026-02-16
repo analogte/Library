@@ -9,6 +9,7 @@ import { PdfReader, type PdfReaderHandle } from "@/components/reader/pdf-reader"
 import { EpubReader, type EpubReaderHandle } from "@/components/reader/epub-reader";
 import { SelectionMenu } from "@/components/reader/selection-menu";
 import { VocabDialog } from "@/components/reader/vocab-dialog";
+import { AiAssistant } from "@/components/reader/ai-assistant";
 import type { Book } from "@/lib/types";
 import { toast } from "sonner";
 
@@ -34,6 +35,10 @@ export default function ReaderPage() {
   const [vocabWord, setVocabWord] = useState("");
   const [vocabMeaning, setVocabMeaning] = useState("");
   const [currentPage, setCurrentPage] = useState(1);
+
+  // AI Assistant
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiText, setAiText] = useState("");
 
   // Reader refs
   const pdfRef = useRef<PdfReaderHandle>(null);
@@ -180,6 +185,12 @@ export default function ReaderPage() {
     [closeSelection]
   );
 
+  const handleAskAI = useCallback(() => {
+    setAiText(selectedText);
+    setAiOpen(true);
+    closeSelection();
+  }, [selectedText, closeSelection]);
+
   const handleHighlight = useCallback(
     async (text: string) => {
       await db.highlights.add({
@@ -280,9 +291,18 @@ export default function ReaderPage() {
             onClose={closeSelection}
             onSaveVocab={handleSaveVocab}
             onHighlight={handleHighlight}
+            onAskAI={handleAskAI}
           />
         )}
       </div>
+
+      {/* AI Assistant */}
+      <AiAssistant
+        selectedText={aiText}
+        bookTitle={book.title}
+        open={aiOpen}
+        onClose={() => setAiOpen(false)}
+      />
 
       {/* Vocab dialog */}
       <VocabDialog
