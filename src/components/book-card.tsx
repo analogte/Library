@@ -94,7 +94,7 @@ export function BookCard({ book, progress, onDelete, onStatusChange }: BookCardP
           <Button
             variant="ghost"
             size="icon"
-            className="absolute right-1 top-1 h-7 w-7 opacity-0 transition-opacity group-hover:opacity-100"
+            className="absolute right-1 top-1 h-7 w-7 opacity-0 pointer-events-none transition-opacity group-hover:opacity-100 group-hover:pointer-events-auto"
           >
             <MoreVertical className="h-4 w-4" />
           </Button>

@@ -11,22 +11,31 @@ import {
   Upload,
   HardDrive,
   Trash2,
+  Languages,
+  Sparkles,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { db } from "@/lib/db";
 import { toast } from "sonner";
+import {
+  getTranslateEngine,
+  setTranslateEngine,
+  type TranslateEngine,
+} from "@/lib/translate";
 
 export default function SettingsPage() {
   const { theme, setTheme } = useTheme();
   const [storageUsage, setStorageUsage] = useState<string>("");
   const [bookCount, setBookCount] = useState(0);
   const [vocabCount, setVocabCount] = useState(0);
+  const [translateEngine, setTranslateEngineState] = useState<TranslateEngine>("google");
 
   useEffect(() => {
     (async () => {
       setBookCount(await db.books.count());
       setVocabCount(await db.vocabulary.count());
+      setTranslateEngineState(await getTranslateEngine());
       if (navigator.storage?.estimate) {
         const est = await navigator.storage.estimate();
         const used = est.usage ?? 0;
@@ -37,6 +46,12 @@ export default function SettingsPage() {
       }
     })();
   }, []);
+
+  const handleEngineChange = async (engine: TranslateEngine) => {
+    await setTranslateEngine(engine);
+    setTranslateEngineState(engine);
+    toast.success(engine === "gemini" ? "เปลี่ยนเป็น AI (Gemini)" : "เปลี่ยนเป็น Google Translate");
+  };
 
   const handleExport = async () => {
     try {
@@ -158,6 +173,35 @@ export default function SettingsPage() {
               {label}
             </Button>
           ))}
+        </div>
+      </Card>
+
+      {/* Translation engine */}
+      <Card className="p-4">
+        <h2 className="mb-1 flex items-center gap-2 font-semibold">
+          <Languages className="h-4 w-4" />
+          เครื่องมือแปลภาษา
+        </h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          เลือกระหว่าง Google Translate (เร็ว, ฟรี) หรือ AI Gemini (แปลตามบริบท, แม่นยำกว่า)
+        </p>
+        <div className="flex gap-2">
+          <Button
+            variant={translateEngine === "google" ? "default" : "outline"}
+            onClick={() => handleEngineChange("google")}
+            className="flex-1"
+          >
+            <Languages className="mr-2 h-4 w-4" />
+            Google Translate
+          </Button>
+          <Button
+            variant={translateEngine === "gemini" ? "default" : "outline"}
+            onClick={() => handleEngineChange("gemini")}
+            className="flex-1"
+          >
+            <Sparkles className="mr-2 h-4 w-4" />
+            AI (Gemini)
+          </Button>
         </div>
       </Card>
 

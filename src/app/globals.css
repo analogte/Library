@@ -119,10 +119,30 @@
 @layer base {
   * {
     @apply border-border outline-ring/50;
-    @apply border-border outline-ring/50;
   }
   body {
     @apply bg-background text-foreground;
-    @apply bg-background text-foreground;
   }
+}
+
+/* PDF.js text layer — invisible text over canvas for selection */
+.textLayer {
+  opacity: 1;
+  line-height: 1;
+}
+
+.textLayer span,
+.textLayer br {
+  color: transparent;
+  position: absolute;
+  white-space: pre;
+  transform-origin: 0% 0%;
+}
+
+.textLayer span::selection {
+  background: rgba(0, 100, 255, 0.3);
+}
+
+.textLayer br::selection {
+  background: rgba(0, 100, 255, 0.3);
 }

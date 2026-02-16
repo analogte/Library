@@ -116,9 +116,9 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       return () => { cancelled = true; };
     }, [pdf, currentPage, scale, totalPages, onPageChange]);
 
-    // Text selection handler
-    useEffect(() => {
-      const handleMouseUp = () => {
+    // Text selection handler — inline on the div, not useEffect
+    const handleTextMouseUp = () => {
+      setTimeout(() => {
         const selection = window.getSelection();
         if (!selection || selection.isCollapsed) return;
         const text = selection.toString().trim();
@@ -127,12 +127,8 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         const range = selection.getRangeAt(0);
         const rect = range.getBoundingClientRect();
         onTextSelect?.(text, rect);
-      };
-
-      const el = textLayerRef.current;
-      el?.addEventListener("mouseup", handleMouseUp);
-      return () => el?.removeEventListener("mouseup", handleMouseUp);
-    }, [onTextSelect]);
+      }, 10);
+    };
 
     // Keyboard navigation
     useEffect(() => {
@@ -161,11 +157,8 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
           <canvas ref={canvasRef} className="shadow-lg" />
           <div
             ref={textLayerRef}
-            className="absolute inset-0"
-            style={{
-              opacity: 0.3,
-              lineHeight: 1,
-            }}
+            className="absolute inset-0 textLayer"
+            onMouseUp={handleTextMouseUp}
           />
         </div>
 

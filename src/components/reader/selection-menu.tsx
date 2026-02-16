@@ -35,9 +35,10 @@ export function SelectionMenu({
   const [translation, setTranslation] = useState("");
   const [detectedLang, setDetectedLang] = useState("");
 
-  // Position the menu above the selection
-  const menuTop = rect.top - 8;
-  const menuLeft = rect.left + rect.width / 2;
+  // Position the menu: prefer above selection, fall back to below if near top
+  const showBelow = rect.top < 200;
+  const menuTop = showBelow ? rect.bottom + 8 : rect.top - 8;
+  const menuLeft = Math.max(160, Math.min(rect.left + rect.width / 2, window.innerWidth - 160));
 
   const handleTranslate = async () => {
     setShowTranslation(true);
@@ -84,7 +85,7 @@ export function SelectionMenu({
       style={{
         top: `${menuTop}px`,
         left: `${menuLeft}px`,
-        transform: "translate(-50%, -100%)",
+        transform: showBelow ? "translate(-50%, 0%)" : "translate(-50%, -100%)",
       }}
     >
       {/* Translation popup */}
