@@ -28,10 +28,11 @@ interface PdfReaderProps {
   onTextSelect?: (text: string, rect: DOMRect) => void;
   readerSettings?: ReaderSettings;
   highlights?: Highlight[];
+  onHighlightDelete?: (highlightId: number) => void;
 }
 
 export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
-  function PdfReader({ fileData, initialPage = 1, onPageChange, onTextSelect, readerSettings, highlights }, ref) {
+  function PdfReader({ fileData, initialPage = 1, onPageChange, onTextSelect, readerSettings, highlights, onHighlightDelete }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const textLayerRef = useRef<HTMLDivElement>(null);
@@ -150,9 +151,11 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
                 if (spanText && hlText.includes(spanText) && spanText.length > 1) {
                   span.style.backgroundColor = hl.color + "66"; // add alpha
                   span.style.borderRadius = "2px";
+                  span.setAttribute("data-highlight-id", String(hl.id));
                 } else if (spanText && spanText.includes(hlText) && hlText.length > 1) {
                   span.style.backgroundColor = hl.color + "66";
                   span.style.borderRadius = "2px";
+                  span.setAttribute("data-highlight-id", String(hl.id));
                 }
               });
             }
@@ -185,6 +188,16 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
     const handleTextMouseDown = () => {
       // Clear pending selection timer when starting new drag
       if (selectionTimerRef.current) clearTimeout(selectionTimerRef.current);
+    };
+
+    // Click on highlighted span → delete highlight
+    const handleTextLayerClick = (e: React.MouseEvent) => {
+      const target = e.target as HTMLElement;
+      const highlightId = target.getAttribute("data-highlight-id");
+      if (highlightId && onHighlightDelete) {
+        e.stopPropagation();
+        onHighlightDelete(Number(highlightId));
+      }
     };
 
     // Keyboard navigation
@@ -247,12 +260,9 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
           <div
             ref={textLayerRef}
             className="absolute inset-0 textLayer"
-            style={readerSettings ? {
-              fontSize: `${readerSettings.fontSize}px`,
-              lineHeight: `${readerSettings.lineHeight}`,
-            } : undefined}
             onMouseDown={handleTextMouseDown}
             onMouseUp={handleTextMouseUp}
+            onClick={handleTextLayerClick}
           />
         </div>
 

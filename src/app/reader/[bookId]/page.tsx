@@ -276,9 +276,19 @@ export default function ReaderPage() {
         cfiRange: selectionCfiRange || undefined,
         createdAt: new Date(),
       });
+      closeSelection();
       toast.success("ไฮไลท์แล้ว");
     },
-    [bookId, currentPage, selectionCfiRange]
+    [bookId, currentPage, selectionCfiRange, closeSelection]
+  );
+
+  // Delete highlight
+  const handleHighlightDelete = useCallback(
+    async (highlightId: number) => {
+      await db.highlights.delete(highlightId);
+      toast.success("ลบไฮไลท์แล้ว");
+    },
+    []
   );
 
   // Search navigation handler
@@ -365,6 +375,7 @@ export default function ReaderPage() {
             onTextSelect={handlePdfTextSelect}
             readerSettings={readerSettings}
             highlights={highlights}
+            onHighlightDelete={handleHighlightDelete}
           />
         ) : (
           <EpubReader
