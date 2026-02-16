@@ -11,18 +11,23 @@ import {
   SheetTitle,
   SheetDescription,
 } from "@/components/ui/sheet";
+import type { EpubSearchResult } from "@/components/reader/epub-reader";
 
 interface SearchResult {
-  page: number;
+  page?: number;
+  cfi?: string;
   snippet: string;
   matchIndex: number;
+  sectionLabel?: string;
 }
 
 interface BookSearchPanelProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  pdfDocument: PDFDocumentProxy | null;
-  onNavigate: (page: number) => void;
+  mode: "pdf" | "epub";
+  pdfDocument?: PDFDocumentProxy | null;
+  epubSearch?: (query: string) => Promise<EpubSearchResult[]>;
+  onNavigate: (target: number | string) => void;
 }
 
 // Max context chars around match for snippet
@@ -31,7 +36,9 @@ const SNIPPET_CONTEXT = 60;
 export function BookSearchPanel({
   open,
   onOpenChange,
+  mode,
   pdfDocument,
+  epubSearch,
   onNavigate,
 }: BookSearchPanelProps) {
   const [query, setQuery] = useState("");
@@ -57,7 +64,7 @@ export function BookSearchPanel({
     textCacheRef.current.clear();
   }, [pdfDocument]);
 
-  // Extract text from a single page (with caching)
+  // Extract text from a single PDF page (with caching)
   const getPageText = useCallback(
     async (pageNum: number): Promise<string> => {
       const cached = textCacheRef.current.get(pageNum);
@@ -90,8 +97,8 @@ export function BookSearchPanel({
     return snippet;
   };
 
-  // Perform search across all pages
-  const performSearch = useCallback(
+  // Perform PDF search across all pages
+  const performPdfSearch = useCallback(
     async (searchQuery: string) => {
       if (!pdfDocument || !searchQuery.trim()) {
         setResults([]);
@@ -143,6 +150,46 @@ export function BookSearchPanel({
     [pdfDocument, getPageText]
   );
 
+  // Perform EPUB search
+  const performEpubSearch = useCallback(
+    async (searchQuery: string) => {
+      if (!epubSearch || !searchQuery.trim()) {
+        setResults([]);
+        setSearchDone(false);
+        setSearching(false);
+        return;
+      }
+
+      abortRef.current = false;
+      setSearching(true);
+      setSearchDone(false);
+      setResults([]);
+
+      try {
+        const epubResults = await epubSearch(searchQuery);
+        if (!abortRef.current) {
+          setResults(
+            epubResults.map((r, i) => ({
+              cfi: r.cfi,
+              snippet: r.excerpt,
+              matchIndex: i,
+              sectionLabel: r.sectionLabel,
+            }))
+          );
+          setSearchDone(true);
+          setSearching(false);
+        }
+      } catch {
+        if (!abortRef.current) {
+          setResults([]);
+          setSearchDone(true);
+          setSearching(false);
+        }
+      }
+    },
+    [epubSearch]
+  );
+
   // Debounced search trigger
   const handleQueryChange = useCallback(
     (value: string) => {
@@ -163,10 +210,14 @@ export function BookSearchPanel({
       }
 
       debounceRef.current = setTimeout(() => {
-        performSearch(value);
+        if (mode === "pdf") {
+          performPdfSearch(value);
+        } else {
+          performEpubSearch(value);
+        }
       }, 300);
     },
-    [performSearch]
+    [mode, performPdfSearch, performEpubSearch]
   );
 
   // Cleanup on unmount
@@ -178,8 +229,12 @@ export function BookSearchPanel({
   }, []);
 
   // Handle clicking a result
-  const handleResultClick = (page: number) => {
-    onNavigate(page);
+  const handleResultClick = (result: SearchResult) => {
+    if (mode === "epub" && result.cfi) {
+      onNavigate(result.cfi);
+    } else if (result.page) {
+      onNavigate(result.page);
+    }
     onOpenChange(false);
   };
 
@@ -245,7 +300,7 @@ export function BookSearchPanel({
             ค้นหาในหนังสือ
           </SheetTitle>
           <SheetDescription className="sr-only">
-            ค้นหาข้อความในหนังสือ PDF ทุกหน้า
+            ค้นหาข้อความในหนังสือทุกหน้า
           </SheetDescription>
         </SheetHeader>
 
@@ -274,7 +329,7 @@ export function BookSearchPanel({
             {!searching && searchDone && (
               <span>
                 พบ {results.length} ผลลัพธ์
-                {results.length > 0 && (
+                {results.length > 0 && mode === "pdf" && (
                   <>
                     {" "}ใน{" "}
                     {new Set(results.map((r) => r.page)).size} หน้า
@@ -305,12 +360,14 @@ export function BookSearchPanel({
             <div className="flex flex-col gap-1">
               {results.map((result) => (
                 <button
-                  key={`${result.page}-${result.matchIndex}`}
-                  onClick={() => handleResultClick(result.page)}
+                  key={`${result.page ?? result.cfi}-${result.matchIndex}`}
+                  onClick={() => handleResultClick(result)}
                   className="group flex flex-col gap-1 rounded-lg border px-3 py-2 text-left transition-colors hover:bg-accent"
                 >
                   <span className="text-xs font-medium text-primary">
-                    หน้า {result.page}
+                    {mode === "pdf"
+                      ? `หน้า ${result.page}`
+                      : result.sectionLabel || "ไม่ทราบบท"}
                   </span>
                   <span className="text-xs leading-relaxed text-muted-foreground group-hover:text-foreground">
                     {renderHighlightedSnippet(result.snippet, query)}

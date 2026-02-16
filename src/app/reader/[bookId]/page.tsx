@@ -3,8 +3,15 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Bookmark, Search, Settings2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookOpen, Search, Settings2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Sheet,
+  SheetContent,
+  SheetHeader,
+  SheetTitle,
+  SheetDescription,
+} from "@/components/ui/sheet";
 import { db } from "@/lib/db";
 import { PdfReader, type PdfReaderHandle } from "@/components/reader/pdf-reader";
 import { EpubReader, type EpubReaderHandle } from "@/components/reader/epub-reader";
@@ -52,9 +59,18 @@ export default function ReaderPage() {
   // Book search
   const [searchOpen, setSearchOpen] = useState(false);
 
+  // Bookmark panel
+  const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
+
   // Load highlights for this book (reactive — updates when new highlights are added)
   const highlights = useLiveQuery(
     () => db.highlights.where("bookId").equals(bookId).toArray(),
+    [bookId]
+  );
+
+  // Load bookmarks for this book (reactive)
+  const bookmarks = useLiveQuery(
+    () => db.bookmarks.where("bookId").equals(bookId).sortBy("page"),
     [bookId]
   );
 
@@ -291,10 +307,14 @@ export default function ReaderPage() {
     []
   );
 
-  // Search navigation handler
+  // Search navigation handler (page number for PDF, CFI string for EPUB)
   const handleSearchNavigate = useCallback(
-    (page: number) => {
-      pdfRef.current?.goToPage(page);
+    (target: number | string) => {
+      if (typeof target === "number") {
+        pdfRef.current?.goToPage(target);
+      } else {
+        epubRef.current?.goToPage(target);
+      }
     },
     []
   );
@@ -351,16 +371,17 @@ export default function ReaderPage() {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{book.title}</p>
         </div>
-        {book.format === "pdf" && (
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSearchOpen(true)}>
-            <Search className="h-4 w-4" />
-          </Button>
-        )}
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSearchOpen(true)}>
+          <Search className="h-4 w-4" />
+        </Button>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSettingsOpen(true)}>
           <Settings2 className="h-4 w-4" />
         </Button>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleAddBookmark}>
           <Bookmark className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setBookmarkPanelOpen(true)}>
+          <BookOpen className="h-4 w-4" />
         </Button>
       </header>
 
@@ -384,6 +405,9 @@ export default function ReaderPage() {
             initialLocation={initialCfi}
             onLocationChange={handleEpubLocationChange}
             onTextSelect={handleEpubTextSelect}
+            readerSettings={readerSettings}
+            highlights={highlights}
+            onHighlightDelete={handleHighlightDelete}
           />
         )}
 
@@ -427,15 +451,65 @@ export default function ReaderPage() {
         onSettingsChange={setReaderSettings}
       />
 
-      {/* Book search panel (PDF only) */}
-      {book.format === "pdf" && (
-        <BookSearchPanel
-          open={searchOpen}
-          onOpenChange={setSearchOpen}
-          pdfDocument={pdfRef.current?.getPdfDocument() ?? null}
-          onNavigate={handleSearchNavigate}
-        />
-      )}
+      {/* Book search panel (PDF + EPUB) */}
+      <BookSearchPanel
+        open={searchOpen}
+        onOpenChange={setSearchOpen}
+        mode={book.format}
+        pdfDocument={book.format === "pdf" ? (pdfRef.current?.getPdfDocument() ?? null) : null}
+        epubSearch={book.format === "epub" ? (q) => epubRef.current!.searchBook(q) : undefined}
+        onNavigate={handleSearchNavigate}
+      />
+
+      {/* Bookmark navigation panel */}
+      <Sheet open={bookmarkPanelOpen} onOpenChange={setBookmarkPanelOpen}>
+        <SheetContent side="right" className="flex w-72 flex-col">
+          <SheetHeader>
+            <SheetTitle className="flex items-center gap-2 text-base">
+              <BookOpen className="h-4 w-4" />
+              บุ๊กมาร์ก
+            </SheetTitle>
+            <SheetDescription className="sr-only">
+              รายการบุ๊กมาร์กทั้งหมดของหนังสือเล่มนี้
+            </SheetDescription>
+          </SheetHeader>
+          <div className="flex-1 overflow-y-auto px-4 pb-4">
+            {(!bookmarks || bookmarks.length === 0) && (
+              <p className="py-8 text-center text-sm text-muted-foreground">
+                ยังไม่มีบุ๊กมาร์ก
+              </p>
+            )}
+            {bookmarks && bookmarks.length > 0 && (
+              <div className="flex flex-col gap-1">
+                {bookmarks.map((bm) => (
+                  <button
+                    key={bm.id}
+                    onClick={() => {
+                      if (book.format === "epub" && bm.position) {
+                        epubRef.current?.goToPage(bm.position);
+                      } else {
+                        pdfRef.current?.goToPage(bm.page);
+                      }
+                      setBookmarkPanelOpen(false);
+                    }}
+                    className="flex items-center justify-between rounded-lg border px-3 py-2 text-left transition-colors hover:bg-accent"
+                  >
+                    <div>
+                      <span className="text-sm font-medium">
+                        {book.format === "epub" ? `${bm.page}%` : `หน้า ${bm.page}`}
+                      </span>
+                      <p className="text-xs text-muted-foreground">
+                        {bm.createdAt.toLocaleDateString("th-TH")}
+                      </p>
+                    </div>
+                    <Bookmark className="h-4 w-4 text-amber-500" />
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </SheetContent>
+      </Sheet>
     </div>
   );
 }
