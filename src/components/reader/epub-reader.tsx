@@ -376,7 +376,11 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
         if (!entry || !renditionRef.current) return;
         const { width, height } = entry.contentRect;
         if (width > 0 && height > 0) {
-          renditionRef.current?.resize?.(width, height);
+          try {
+            renditionRef.current.resize(width, height);
+          } catch {
+            // Rendition may be destroyed during cleanup
+          }
         }
       });
       observer.observe(el);
