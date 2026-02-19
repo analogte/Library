@@ -2,10 +2,21 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
-import { BookOpen, FileText, Search, Languages, Settings } from "lucide-react";
+import { BookOpen, FileText, Search, Languages, Settings, Brain, BarChart3 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useReviewCount } from "@/hooks/use-review-count";
 
 const NAV_ITEMS = [
+  { href: "/", label: "ห้องสมุด", icon: BookOpen },
+  { href: "/review", label: "ทบทวน", icon: Brain, showBadge: true },
+  { href: "/notes", label: "บันทึก", icon: FileText },
+  { href: "/search", label: "ค้นหา", icon: Search },
+  { href: "/vocabulary", label: "คำศัพท์", icon: Languages },
+  { href: "/analytics", label: "สถิติ", icon: BarChart3 },
+  { href: "/settings", label: "ตั้งค่า", icon: Settings },
+];
+
+const MOBILE_NAV_ITEMS = [
   { href: "/", label: "ห้องสมุด", icon: BookOpen },
   { href: "/notes", label: "บันทึก", icon: FileText },
   { href: "/search", label: "ค้นหา", icon: Search },
@@ -15,6 +26,7 @@ const NAV_ITEMS = [
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
+  const reviewCount = useReviewCount();
 
   // Hide shell in reader mode
   if (pathname.startsWith("/reader/")) {
@@ -35,6 +47,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               item.href === "/"
                 ? pathname === "/"
                 : pathname.startsWith(item.href);
+            const badge = "showBadge" in item && item.showBadge && reviewCount > 0;
             return (
               <Link
                 key={item.href}
@@ -47,7 +60,15 @@ export function AppShell({ children }: { children: React.ReactNode }) {
                 )}
               >
                 <item.icon className="h-4 w-4" />
-                {item.label}
+                <span className="flex-1">{item.label}</span>
+                {badge && (
+                  <span className={cn(
+                    "flex h-5 min-w-5 items-center justify-center rounded-full px-1 text-[10px] font-bold",
+                    isActive ? "bg-primary-foreground text-primary" : "bg-primary text-primary-foreground"
+                  )}>
+                    {reviewCount > 99 ? "99+" : reviewCount}
+                  </span>
+                )}
               </Link>
             );
           })}
@@ -62,7 +83,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       {/* Mobile bottom nav */}
       <nav className="fixed inset-x-0 bottom-0 z-30 border-t bg-card md:hidden">
         <div className="flex h-16 items-center justify-around">
-          {NAV_ITEMS.map((item) => {
+          {MOBILE_NAV_ITEMS.map((item) => {
             const isActive =
               item.href === "/"
                 ? pathname === "/"

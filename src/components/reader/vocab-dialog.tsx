@@ -17,7 +17,9 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import { Loader2 } from "lucide-react";
 import { db } from "@/lib/db";
+import { lookupWord } from "@/lib/translate";
 import { PART_OF_SPEECH_LABELS } from "@/lib/types";
 import type { PartOfSpeech } from "@/lib/types";
 import { toast } from "sonner";
@@ -46,12 +48,41 @@ export function VocabDialog({
   const [partOfSpeech, setPartOfSpeech] = useState<string>("");
   const [example, setExample] = useState("");
   const [saving, setSaving] = useState(false);
+  const [lookingUp, setLookingUp] = useState(false);
 
   // Reset when props change
   useEffect(() => {
     setWord(initialWord);
     setMeaning(initialMeaning);
   }, [initialWord, initialMeaning]);
+
+  // Auto-lookup POS + example when dialog opens with a word
+  useEffect(() => {
+    if (!open || !initialWord.trim()) return;
+    // Reset fields for new word
+    setPartOfSpeech("");
+    setExample("");
+
+    let cancelled = false;
+    setLookingUp(true);
+    lookupWord(initialWord.trim()).then((result) => {
+      if (cancelled) return;
+      if (result.partOfSpeech) {
+        // Map dictionary POS to our keys (e.g. "noun" → "noun")
+        const posKey = result.partOfSpeech.toLowerCase();
+        if (posKey in PART_OF_SPEECH_LABELS) {
+          setPartOfSpeech(posKey);
+        }
+      }
+      if (result.example) {
+        setExample(result.example);
+      }
+    }).finally(() => {
+      if (!cancelled) setLookingUp(false);
+    });
+
+    return () => { cancelled = true; };
+  }, [open, initialWord]);
 
   const handleSave = async () => {
     if (!word.trim()) {
@@ -113,10 +144,13 @@ export function VocabDialog({
             />
           </div>
           <div>
-            <label className="text-sm font-medium">ชนิดคำ</label>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium">ชนิดคำ</label>
+              {lookingUp && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            </div>
             <Select value={partOfSpeech} onValueChange={setPartOfSpeech}>
               <SelectTrigger>
-                <SelectValue placeholder="เลือกชนิดคำ (ไม่บังคับ)" />
+                <SelectValue placeholder={lookingUp ? "กำลังค้นหา..." : "เลือกชนิดคำ (ไม่บังคับ)"} />
               </SelectTrigger>
               <SelectContent>
                 {Object.entries(PART_OF_SPEECH_LABELS).map(([key, label]) => (
@@ -128,11 +162,14 @@ export function VocabDialog({
             </Select>
           </div>
           <div>
-            <label className="text-sm font-medium">ตัวอย่างประโยค</label>
+            <div className="flex items-center gap-2">
+              <label className="text-sm font-medium">ตัวอย่างประโยค</label>
+              {lookingUp && <Loader2 className="h-3 w-3 animate-spin text-muted-foreground" />}
+            </div>
             <Textarea
               value={example}
               onChange={(e) => setExample(e.target.value)}
-              placeholder="ประโยคตัวอย่าง (ไม่บังคับ)"
+              placeholder={lookingUp ? "กำลังค้นหาตัวอย่าง..." : "ประโยคตัวอย่าง (ไม่บังคับ)"}
               rows={2}
             />
           </div>

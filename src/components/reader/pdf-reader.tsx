@@ -13,6 +13,7 @@ import { useSwipe } from "@/hooks/use-swipe";
 import type { ReaderSettings } from "@/lib/reader-settings";
 import { BG_PRESETS } from "@/lib/reader-settings";
 import type { Highlight } from "@/lib/types";
+import { getWordAtPoint } from "@/components/reader/word-popup";
 
 export interface PdfReaderHandle {
   goToPage: (page: number) => void;
@@ -26,13 +27,14 @@ interface PdfReaderProps {
   initialPage?: number;
   onPageChange?: (page: number, totalPages: number) => void;
   onTextSelect?: (text: string, rect: DOMRect) => void;
+  onWordTap?: (word: string, rect: DOMRect) => void;
   readerSettings?: ReaderSettings;
   highlights?: Highlight[];
   onHighlightDelete?: (highlightId: number) => void;
 }
 
 export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
-  function PdfReader({ fileData, initialPage = 1, onPageChange, onTextSelect, readerSettings, highlights, onHighlightDelete }, ref) {
+  function PdfReader({ fileData, initialPage = 1, onPageChange, onTextSelect, onWordTap, readerSettings, highlights, onHighlightDelete }, ref) {
     const containerRef = useRef<HTMLDivElement>(null);
     const canvasRef = useRef<HTMLCanvasElement>(null);
     const textLayerRef = useRef<HTMLDivElement>(null);
@@ -382,11 +384,14 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
       pendingSelectionRef.current = null;
     };
 
-    // Click on highlighted span → show delete popup
+    // Click on highlighted span → show delete popup; plain click → word tap
     const handleTextLayerClick = (e: React.MouseEvent) => {
-      // Don't show popup if user is selecting text
+      // Don't trigger if user just finished a drag-select
       const selection = window.getSelection();
       if (selection && !selection.isCollapsed) return;
+
+      // Don't trigger if there was a pending selection (user was selecting text)
+      if (pendingSelectionRef.current) return;
 
       const target = e.target as HTMLElement;
       const highlightId = target.getAttribute("data-highlight-id");
@@ -399,6 +404,13 @@ export const PdfReader = forwardRef<PdfReaderHandle, PdfReaderProps>(
         });
       } else {
         setHighlightPopup(null);
+        // Word tap — extract word at click point
+        if (onWordTap && textLayerRef.current) {
+          const result = getWordAtPoint(document, e.clientX, e.clientY);
+          if (result && result.word.length >= 2) {
+            onWordTap(result.word, result.rect);
+          }
+        }
       }
     };
 

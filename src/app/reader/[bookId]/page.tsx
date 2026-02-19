@@ -3,7 +3,7 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useLiveQuery } from "dexie-react-hooks";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Bookmark, BookOpen, FileText, Search, Settings2 } from "lucide-react";
+import { ArrowLeft, Bookmark, BookOpen, FileText, Languages, Search, Settings2, Volume2, Sparkles } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
   Sheet,
@@ -20,6 +20,13 @@ import { VocabDialog } from "@/components/reader/vocab-dialog";
 import { AiAssistant } from "@/components/reader/ai-assistant";
 import { ReaderSettingsPanel } from "@/components/reader/reader-settings-panel";
 import { BookSearchPanel } from "@/components/reader/book-search-panel";
+import { PageTranslationPanel } from "@/components/reader/page-translation-panel";
+import { WordPopup } from "@/components/reader/word-popup";
+import { BatchTranslatePanel } from "@/components/reader/batch-translate-panel";
+import { TTSMiniPlayer } from "@/components/reader/tts-mini-player";
+import { NotebookPanel } from "@/components/reader/notebook-panel";
+import { AiSummaryPanel } from "@/components/reader/ai-summary-panel";
+import { useTTS } from "@/hooks/use-tts";
 import type { Book } from "@/lib/types";
 import type { ReaderSettings } from "@/lib/reader-settings";
 import { getReaderSettings, DEFAULTS } from "@/lib/reader-settings";
@@ -61,6 +68,27 @@ export default function ReaderPage() {
 
   // Bookmark panel
   const [bookmarkPanelOpen, setBookmarkPanelOpen] = useState(false);
+
+  // Page translation panel
+  const [pageTranslateOpen, setPageTranslateOpen] = useState(false);
+
+  // Word popup
+  const [wordPopup, setWordPopup] = useState<{ word: string; rect: DOMRect } | null>(null);
+
+  // Batch translate panel
+  const [batchTranslateOpen, setBatchTranslateOpen] = useState(false);
+
+  // AI Summary panel
+  const [aiSummaryOpen, setAiSummaryOpen] = useState(false);
+  const [aiSummaryText, setAiSummaryText] = useState("");
+
+  // Notebook panel
+  const [notebookOpen, setNotebookOpen] = useState(false);
+  const [notebookExpanded, setNotebookExpanded] = useState(false);
+  const [notebookHighlightText, setNotebookHighlightText] = useState("");
+
+  // TTS
+  const tts = useTTS();
 
   // Load highlights for this book (reactive — updates when new highlights are added)
   const highlights = useLiveQuery(
@@ -307,6 +335,80 @@ export default function ReaderPage() {
     []
   );
 
+  // Add note from selection
+  const handleAddNote = useCallback(() => {
+    setNotebookHighlightText(selectedText);
+    setNotebookOpen(true);
+    closeSelection();
+  }, [selectedText, closeSelection]);
+
+  // Get page text for full-page translation
+  const getPageText = useCallback(async (): Promise<string> => {
+    if (book?.format === "pdf") {
+      const pdfDoc = pdfRef.current?.getPdfDocument();
+      if (pdfDoc) {
+        const page = await pdfDoc.getPage(currentPage);
+        const content = await page.getTextContent();
+        return content.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ")
+          .trim();
+      }
+      return "";
+    }
+    return epubRef.current?.getCurrentSectionText() ?? "";
+  }, [book?.format, currentPage]);
+
+  // Word tap handler
+  const handleWordTap = useCallback(
+    (word: string, rect: DOMRect) => {
+      // Don't show word popup if text selection is active
+      if (selectedText) return;
+      setWordPopup({ word, rect });
+    },
+    [selectedText]
+  );
+
+  // Close word popup when text selection happens
+  const handlePdfTextSelectWithWordClose = useCallback(
+    (text: string, rect: DOMRect) => {
+      setWordPopup(null);
+      handlePdfTextSelect(text, rect);
+    },
+    [handlePdfTextSelect]
+  );
+
+  const handleEpubTextSelectWithWordClose = useCallback(
+    (text: string, cfiRange: string, rect: DOMRect) => {
+      setWordPopup(null);
+      handleEpubTextSelect(text, cfiRange, rect);
+    },
+    [handleEpubTextSelect]
+  );
+
+  // Read current page aloud
+  const handleReadPage = useCallback(async () => {
+    let text = "";
+    if (book?.format === "pdf") {
+      const pdfDoc = pdfRef.current?.getPdfDocument();
+      if (pdfDoc) {
+        const page = await pdfDoc.getPage(currentPage);
+        const content = await page.getTextContent();
+        text = content.items
+          .map((item) => ("str" in item ? item.str : ""))
+          .join(" ")
+          .trim();
+      }
+    } else {
+      text = epubRef.current?.getCurrentSectionText() ?? "";
+    }
+    if (text) {
+      tts.speak(text);
+    } else {
+      toast.error("ไม่พบข้อความในหน้านี้");
+    }
+  }, [book?.format, currentPage, tts]);
+
   // Search navigation handler (page number for PDF, CFI string for EPUB)
   const handleSearchNavigate = useCallback(
     (target: number | string) => {
@@ -371,8 +473,33 @@ export default function ReaderPage() {
         <div className="flex-1 min-w-0">
           <p className="text-sm font-medium truncate">{book.title}</p>
         </div>
-        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => router.push(`/notes/${bookId}`)}>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`h-8 w-8 ${notebookOpen ? "bg-accent" : ""}`}
+          onClick={() => setNotebookOpen((prev) => !prev)}
+          title="สมุดบันทึก"
+        >
           <FileText className="h-4 w-4" />
+        </Button>
+        <Button
+          variant="ghost"
+          size="icon"
+          className={`h-8 w-8 ${aiSummaryOpen ? "bg-accent" : ""}`}
+          onClick={async () => {
+            const text = await getPageText();
+            setAiSummaryText(text);
+            setAiSummaryOpen(true);
+          }}
+          title="AI สรุปเนื้อหา"
+        >
+          <Sparkles className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleReadPage} title="อ่านทั้งหน้า">
+          <Volume2 className="h-4 w-4" />
+        </Button>
+        <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setPageTranslateOpen(true)} title="แปลทั้งหน้า">
+          <Languages className="h-4 w-4" />
         </Button>
         <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => setSearchOpen(true)}>
           <Search className="h-4 w-4" />
@@ -388,44 +515,80 @@ export default function ReaderPage() {
         </Button>
       </header>
 
-      {/* Reader area */}
-      <div className="relative flex-1 overflow-hidden">
-        {book.format === "pdf" ? (
-          <PdfReader
-            ref={pdfRef}
-            fileData={fileData}
-            initialPage={initialPage}
-            onPageChange={handlePdfPageChange}
-            onTextSelect={handlePdfTextSelect}
-            readerSettings={readerSettings}
-            highlights={highlights}
-            onHighlightDelete={handleHighlightDelete}
-          />
-        ) : (
-          <EpubReader
-            ref={epubRef}
-            fileData={fileData}
-            initialLocation={initialCfi}
-            onLocationChange={handleEpubLocationChange}
-            onTextSelect={handleEpubTextSelect}
-            readerSettings={readerSettings}
-            highlights={highlights}
-            onHighlightDelete={handleHighlightDelete}
-          />
-        )}
+      {/* Reader area + Notebook */}
+      <div className="relative flex flex-1 overflow-hidden">
+        {/* Reader */}
+        <div className="relative flex-1 min-w-0 overflow-hidden">
+          {book.format === "pdf" ? (
+            <PdfReader
+              ref={pdfRef}
+              fileData={fileData}
+              initialPage={initialPage}
+              onPageChange={handlePdfPageChange}
+              onTextSelect={handlePdfTextSelectWithWordClose}
+              onWordTap={handleWordTap}
+              readerSettings={readerSettings}
+              highlights={highlights}
+              onHighlightDelete={handleHighlightDelete}
+            />
+          ) : (
+            <EpubReader
+              ref={epubRef}
+              fileData={fileData}
+              initialLocation={initialCfi}
+              onLocationChange={handleEpubLocationChange}
+              onTextSelect={handleEpubTextSelectWithWordClose}
+              onWordTap={handleWordTap}
+              readerSettings={readerSettings}
+              highlights={highlights}
+              onHighlightDelete={handleHighlightDelete}
+            />
+          )}
 
-        {/* Selection floating menu */}
-        {selectedText && selectionRect && (
-          <SelectionMenu
-            text={selectedText}
-            rect={selectionRect}
-            onClose={closeSelection}
-            onSaveVocab={handleSaveVocab}
-            onHighlight={handleHighlight}
-            onAskAI={handleAskAI}
+          {/* Selection floating menu */}
+          {selectedText && selectionRect && (
+            <SelectionMenu
+              text={selectedText}
+              rect={selectionRect}
+              onClose={closeSelection}
+              onSaveVocab={handleSaveVocab}
+              onHighlight={handleHighlight}
+              onAskAI={handleAskAI}
+              onAddNote={handleAddNote}
+              onSpeak={tts.speak}
+            />
+          )}
+        </div>
+
+        {/* Notebook Panel */}
+        {notebookOpen && (
+          <NotebookPanel
+            bookId={bookId}
+            bookTitle={book.title}
+            currentPage={currentPage}
+            isEpub={book.format === "epub"}
+            expanded={notebookExpanded}
+            highlightText={notebookHighlightText}
+            onExpandedChange={setNotebookExpanded}
+            onClose={() => {
+              setNotebookOpen(false);
+              setNotebookExpanded(false);
+            }}
+            onClearHighlight={() => setNotebookHighlightText("")}
           />
         )}
       </div>
+
+      {/* TTS Mini Player */}
+      <TTSMiniPlayer
+        text={tts.text}
+        isPlaying={tts.isPlaying}
+        isPaused={tts.isPaused}
+        rate={tts.rate}
+        onTogglePause={tts.togglePause}
+        onCycleRate={tts.cycleRate}
+        onStop={tts.stop}
+      />
 
       {/* AI Assistant */}
       <AiAssistant
@@ -462,6 +625,48 @@ export default function ReaderPage() {
         pdfDocument={book.format === "pdf" ? (pdfRef.current?.getPdfDocument() ?? null) : null}
         epubSearch={book.format === "epub" ? (q) => epubRef.current!.searchBook(q) : undefined}
         onNavigate={handleSearchNavigate}
+      />
+
+      {/* Word popup */}
+      {wordPopup && (
+        <WordPopup
+          word={wordPopup.word}
+          rect={wordPopup.rect}
+          onClose={() => setWordPopup(null)}
+          onSpeak={tts.speak}
+          onSaveVocab={(word, translation) => {
+            setVocabWord(word);
+            setVocabMeaning(translation);
+            setVocabOpen(true);
+            setWordPopup(null);
+          }}
+        />
+      )}
+
+      {/* Page translation panel */}
+      <PageTranslationPanel
+        open={pageTranslateOpen}
+        onOpenChange={setPageTranslateOpen}
+        getPageText={getPageText}
+      />
+
+      {/* Batch translate panel */}
+      <BatchTranslatePanel
+        open={batchTranslateOpen}
+        onOpenChange={setBatchTranslateOpen}
+        highlights={highlights ?? []}
+        bookId={bookId}
+        bookTitle={book.title}
+      />
+
+      {/* AI Summary panel */}
+      <AiSummaryPanel
+        open={aiSummaryOpen}
+        onOpenChange={setAiSummaryOpen}
+        pageText={aiSummaryText}
+        bookTitle={book.title}
+        bookId={bookId}
+        currentPage={currentPage}
       />
 
       {/* Bookmark navigation panel */}
@@ -511,6 +716,21 @@ export default function ReaderPage() {
               </div>
             )}
           </div>
+          {highlights && highlights.length > 0 && (
+            <div className="flex-shrink-0 border-t px-4 py-3">
+              <Button
+                variant="outline"
+                className="w-full text-xs"
+                onClick={() => {
+                  setBookmarkPanelOpen(false);
+                  setBatchTranslateOpen(true);
+                }}
+              >
+                <Languages className="mr-2 h-3.5 w-3.5" />
+                แปลไฮไลท์ทั้งหมด ({highlights.length})
+              </Button>
+            </div>
+          )}
         </SheetContent>
       </Sheet>
     </div>

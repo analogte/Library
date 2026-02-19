@@ -10,6 +10,8 @@ import {
   Trash2,
   ExternalLink,
   GraduationCap,
+  Brain,
+  Gamepad2,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { Input } from "@/components/ui/input";
@@ -28,6 +30,8 @@ import type { PartOfSpeech } from "@/lib/types";
 import { toast } from "sonner";
 import Link from "next/link";
 import { FlashcardQuiz } from "@/components/vocabulary/flashcard-quiz";
+import { QuickQuiz } from "@/components/vocabulary/quick-quiz";
+import { useReviewCount } from "@/hooks/use-review-count";
 
 export default function VocabularyPage() {
   const [searchQuery, setSearchQuery] = useState("");
@@ -36,6 +40,8 @@ export default function VocabularyPage() {
   const [filterBook, setFilterBook] = useState<string>("all");
   const [filterMastered, setFilterMastered] = useState<string>("all");
   const [showQuiz, setShowQuiz] = useState(false);
+  const [showQuickQuiz, setShowQuickQuiz] = useState(false);
+  const reviewCount = useReviewCount();
 
   // Debounce search input
   useEffect(() => {
@@ -111,6 +117,16 @@ export default function VocabularyPage() {
     );
   }
 
+  // Show quick quiz mode
+  if (showQuickQuiz && filtered) {
+    return (
+      <QuickQuiz
+        vocabulary={filtered}
+        onClose={() => setShowQuickQuiz(false)}
+      />
+    );
+  }
+
   return (
     <div className="space-y-6">
       <div className="flex items-start justify-between gap-3">
@@ -126,15 +142,38 @@ export default function VocabularyPage() {
               : ""}
           </p>
         </div>
-        {filtered && filtered.length > 0 && (
-          <Button
-            onClick={() => setShowQuiz(true)}
-            className="gap-2"
-          >
-            <GraduationCap className="h-4 w-4" />
-            ทบทวนคำศัพท์
-          </Button>
-        )}
+        <div className="flex gap-2 flex-wrap">
+          {reviewCount > 0 && (
+            <Link href="/review">
+              <Button variant="outline" className="gap-2">
+                <Brain className="h-4 w-4" />
+                ทบทวน SM-2
+                <span className="flex h-5 min-w-5 items-center justify-center rounded-full bg-primary text-primary-foreground px-1 text-[10px] font-bold">
+                  {reviewCount}
+                </span>
+              </Button>
+            </Link>
+          )}
+          {filtered && filtered.length >= 4 && (
+            <Button
+              variant="outline"
+              onClick={() => setShowQuickQuiz(true)}
+              className="gap-2"
+            >
+              <Gamepad2 className="h-4 w-4" />
+              เล่น Quiz
+            </Button>
+          )}
+          {filtered && filtered.length > 0 && (
+            <Button
+              onClick={() => setShowQuiz(true)}
+              className="gap-2"
+            >
+              <GraduationCap className="h-4 w-4" />
+              ทบทวนคำศัพท์
+            </Button>
+          )}
+        </div>
       </div>
 
       {/* Filters */}

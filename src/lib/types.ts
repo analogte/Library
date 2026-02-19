@@ -86,6 +86,10 @@ export interface VocabularyEntry {
   language: string;
   mastered: boolean;
   tags?: string[];
+  nextReviewAt?: Date;
+  interval?: number;      // days
+  easeFactor?: number;    // default 2.5
+  repetitions?: number;   // default 0
   createdAt: Date;
   updatedAt: Date;
 }
@@ -103,11 +107,33 @@ export interface BookNote {
   bookId: number;
   title: string;
   content: string;
+  page?: number;
+  pageLabel?: string;
+  highlightText?: string;
+  type?: 'manual' | 'ai-summary';
+  tags?: string[];
   createdAt: Date;
   updatedAt: Date;
+}
+
+export interface QuizSession {
+  id?: number;
+  date: string;           // YYYY-MM-DD
+  totalQuestions: number;
+  correctAnswers: number;
+  createdAt: Date;
 }
 
 export interface AppSetting {
   key: string;
   value: string;
+}
+
+export interface TranslationCacheEntry {
+  engine: string;
+  targetLang: string;
+  text: string;
+  translatedText: string;
+  detectedLang?: string;
+  createdAt: Date;
 }

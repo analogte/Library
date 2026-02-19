@@ -11,6 +11,7 @@ import type { Rendition, Book as EpubBook } from "epubjs";
 import type { ReaderSettings } from "@/lib/reader-settings";
 import { BG_PRESETS } from "@/lib/reader-settings";
 import type { Highlight } from "@/lib/types";
+import { getWordAtPoint } from "@/components/reader/word-popup";
 
 export interface EpubSearchResult {
   cfi: string;
@@ -24,6 +25,7 @@ export interface EpubReaderHandle {
   nextPage: () => void;
   prevPage: () => void;
   searchBook: (query: string) => Promise<EpubSearchResult[]>;
+  getCurrentSectionText: () => string;
 }
 
 interface EpubReaderProps {
@@ -31,6 +33,7 @@ interface EpubReaderProps {
   initialLocation?: string;
   onLocationChange?: (cfi: string, percentage: number) => void;
   onTextSelect?: (text: string, cfiRange: string, rect: DOMRect) => void;
+  onWordTap?: (word: string, rect: DOMRect) => void;
   readerSettings: ReaderSettings;
   highlights?: Highlight[];
   onHighlightDelete?: (id: number) => void;
@@ -43,6 +46,7 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
       initialLocation,
       onLocationChange,
       onTextSelect,
+      onWordTap,
       readerSettings,
       highlights,
       onHighlightDelete,
@@ -55,9 +59,11 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
     const onLocationChangeRef = useRef(onLocationChange);
     const onTextSelectRef = useRef(onTextSelect);
     const onHighlightDeleteRef = useRef(onHighlightDelete);
+    const onWordTapRef = useRef(onWordTap);
     onLocationChangeRef.current = onLocationChange;
     onTextSelectRef.current = onTextSelect;
     onHighlightDeleteRef.current = onHighlightDelete;
+    onWordTapRef.current = onWordTap;
 
     const [loading, setLoading] = useState(true);
     const [currentCfi, setCurrentCfi] = useState(initialLocation ?? "");
@@ -81,6 +87,11 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
       getCurrentLocation: () => currentCfi,
       nextPage: () => renditionRef.current?.next(),
       prevPage: () => renditionRef.current?.prev(),
+      getCurrentSectionText: () => {
+        const iframe = viewerRef.current?.querySelector("iframe");
+        const body = iframe?.contentDocument?.body;
+        return body?.innerText?.trim() ?? "";
+      },
       searchBook: async (query: string): Promise<EpubSearchResult[]> => {
         const book = bookRef.current;
         if (!book || !query.trim()) return [];
@@ -261,6 +272,30 @@ export const EpubReader = forwardRef<EpubReaderHandle, EpubReaderProps>(
                 },
                 { passive: true }
               );
+
+              // -- Word tap: single click without selection → translate word --
+              doc.addEventListener("click", (e: MouseEvent) => {
+                const sel = doc.getSelection?.();
+                if (sel && !sel.isCollapsed) return;
+                if (!onWordTapRef.current) return;
+
+                const result = getWordAtPoint(doc, e.clientX, e.clientY);
+                if (result && result.word.length >= 2) {
+                  const iframe = viewerRef.current?.querySelector("iframe");
+                  if (iframe) {
+                    const ir = iframe.getBoundingClientRect();
+                    const adjustedRect = new DOMRect(
+                      result.rect.x + ir.x,
+                      result.rect.y + ir.y,
+                      result.rect.width,
+                      result.rect.height
+                    );
+                    onWordTapRef.current(result.word, adjustedRect);
+                  } else {
+                    onWordTapRef.current(result.word, result.rect);
+                  }
+                }
+              });
             }
           );
 

@@ -130,9 +130,12 @@ export default function LibraryPage() {
         <UploadDialog onUploadComplete={refresh} />
       </div>
 
-      {/* Reading Statistics */}
-      <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
-        <Card className="py-3 gap-0">
+      {/* Reading Statistics — clickable → /analytics */}
+      <div
+        className="grid grid-cols-2 gap-3 sm:grid-cols-4 cursor-pointer"
+        onClick={() => router.push("/analytics")}
+      >
+        <Card className="py-3 gap-0 transition-colors hover:bg-accent">
           <CardContent className="flex items-center gap-3 px-4">
             <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-blue-500/10">
               <Clock className="h-4 w-4 text-blue-500" />
@@ -150,7 +153,7 @@ export default function LibraryPage() {
           </CardContent>
         </Card>
 
-        <Card className="py-3 gap-0">
+        <Card className="py-3 gap-0 transition-colors hover:bg-accent">
           <CardContent className="flex items-center gap-3 px-4">
             <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-green-500/10">
               <BookCheck className="h-4 w-4 text-green-500" />
@@ -164,7 +167,7 @@ export default function LibraryPage() {
           </CardContent>
         </Card>
 
-        <Card className="py-3 gap-0">
+        <Card className="py-3 gap-0 transition-colors hover:bg-accent">
           <CardContent className="flex items-center gap-3 px-4">
             <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-purple-500/10">
               <Languages className="h-4 w-4 text-purple-500" />
@@ -178,7 +181,7 @@ export default function LibraryPage() {
           </CardContent>
         </Card>
 
-        <Card className="py-3 gap-0">
+        <Card className="py-3 gap-0 transition-colors hover:bg-accent">
           <CardContent className="flex items-center gap-3 px-4">
             <div className="flex h-9 w-9 flex-shrink-0 items-center justify-center rounded-lg bg-orange-500/10">
               <Flame className="h-4 w-4 text-orange-500" />

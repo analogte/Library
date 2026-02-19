@@ -1,15 +1,16 @@
 "use client";
 
-import { useState, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import {
   ArrowLeft,
-  RotateCcw,
-  BookOpen,
+  Brain,
   Trophy,
-  X,
+  RotateCcw,
   Check,
+  BookOpen,
 } from "lucide-react";
 import { db } from "@/lib/db";
+import { getReviewQueue } from "@/lib/review-utils";
 import { calculateSM2 } from "@/lib/sm2";
 import { Card } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -17,83 +18,69 @@ import { Button } from "@/components/ui/button";
 import { Progress } from "@/components/ui/progress";
 import { PART_OF_SPEECH_LABELS } from "@/lib/types";
 import type { VocabularyEntry, PartOfSpeech } from "@/lib/types";
-import { toast } from "sonner";
+import Link from "next/link";
 
-interface FlashcardQuizProps {
-  vocabulary: VocabularyEntry[];
-  bookMap: Map<number, string>;
-  onClose: () => void;
-}
-
-export function FlashcardQuiz({
-  vocabulary,
-  bookMap,
-  onClose,
-}: FlashcardQuizProps) {
+export default function ReviewPage() {
+  const [cards, setCards] = useState<VocabularyEntry[]>([]);
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
-  const [results, setResults] = useState<Map<number, boolean>>(new Map());
   const [showSummary, setShowSummary] = useState(false);
+  const [results, setResults] = useState<Map<number, number>>(new Map()); // id → quality
+  const [loading, setLoading] = useState(true);
 
-  // Shuffle cards on mount
-  const [cards] = useState<VocabularyEntry[]>(() => {
-    const shuffled = [...vocabulary];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    return shuffled;
-  });
+  useEffect(() => {
+    getReviewQueue().then((queue) => {
+      // Shuffle
+      for (let i = queue.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [queue[i], queue[j]] = [queue[j], queue[i]];
+      }
+      setCards(queue);
+      setLoading(false);
+    });
+  }, []);
 
   const currentCard = cards[currentIndex];
   const totalCards = cards.length;
-  const progressPercent =
-    totalCards > 0 ? (results.size / totalCards) * 100 : 0;
+  const progressPercent = totalCards > 0 ? (results.size / totalCards) * 100 : 0;
 
-  const masteredCount = useMemo(() => {
-    let count = 0;
-    results.forEach((v) => {
-      if (v) count++;
+  const stats = useMemo(() => {
+    let good = 0;
+    let bad = 0;
+    results.forEach((q) => {
+      if (q >= 3) good++;
+      else bad++;
     });
-    return count;
+    return { good, bad };
   }, [results]);
 
-  const handleFlip = useCallback(() => {
-    setIsFlipped((prev) => !prev);
-  }, []);
-
-  const handleAnswer = useCallback(
-    async (mastered: boolean) => {
+  const handleRate = useCallback(
+    async (quality: number) => {
       if (!currentCard?.id) return;
 
-      // Update IndexedDB + SM-2
-      const quality = mastered ? 4 : 1;
       const sm2Result = calculateSM2({
         quality,
         repetitions: currentCard.repetitions ?? 0,
         easeFactor: currentCard.easeFactor ?? 2.5,
         interval: currentCard.interval ?? 0,
       });
+
       await db.vocabulary.update(currentCard.id, {
-        mastered,
         nextReviewAt: sm2Result.nextReviewAt,
         interval: sm2Result.interval,
         easeFactor: sm2Result.easeFactor,
         repetitions: sm2Result.repetitions,
+        mastered: quality >= 4 && sm2Result.repetitions >= 3,
         updatedAt: new Date(),
       });
 
-      // Track result
       setResults((prev) => {
         const next = new Map(prev);
-        next.set(currentCard.id!, mastered);
+        next.set(currentCard.id!, quality);
         return next;
       });
 
-      // Move to next card or show summary
       setIsFlipped(false);
-
-      // Small delay so the card unflips before transitioning
       setTimeout(() => {
         if (currentIndex + 1 >= totalCards) {
           setShowSummary(true);
@@ -105,101 +92,93 @@ export function FlashcardQuiz({
     [currentCard, currentIndex, totalCards]
   );
 
-  const handleRestart = useCallback(() => {
-    // Restart with only unmastered words
-    const unmasteredCards = cards.filter((c) => !results.get(c.id!));
-    if (unmasteredCards.length === 0) {
-      toast.success("จำได้ทุกคำแล้ว!");
-      onClose();
-      return;
-    }
-    // Re-shuffle unmastered
-    for (let i = unmasteredCards.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      [unmasteredCards[i], unmasteredCards[j]] = [
-        unmasteredCards[j],
-        unmasteredCards[i],
-      ];
-    }
-    // Reset state with unmastered cards
-    cards.length = 0;
-    cards.push(...unmasteredCards);
-    setCurrentIndex(0);
-    setIsFlipped(false);
-    setResults(new Map());
-    setShowSummary(false);
-  }, [cards, results, onClose]);
+  if (loading) {
+    return (
+      <div className="flex h-[50vh] items-center justify-center">
+        <p className="text-muted-foreground">กำลังโหลด...</p>
+      </div>
+    );
+  }
 
   if (totalCards === 0) {
     return (
       <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
-        <BookOpen className="h-16 w-16 text-muted-foreground/50" />
+        <Brain className="h-16 w-16 text-muted-foreground/50" />
         <div>
-          <h3 className="text-lg font-medium">ไม่มีคำศัพท์ให้ทบทวน</h3>
+          <h3 className="text-lg font-medium">ไม่มีคำศัพท์ต้องทบทวน</h3>
           <p className="text-sm text-muted-foreground">
-            เพิ่มคำศัพท์จากการอ่านหนังสือก่อนนะ
+            คำศัพท์ที่ถึงเวลาทบทวนจะปรากฏที่นี่
           </p>
         </div>
-        <Button variant="outline" onClick={onClose}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          กลับ
-        </Button>
+        <Link href="/vocabulary">
+          <Button variant="outline">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            กลับคลังคำศัพท์
+          </Button>
+        </Link>
       </div>
     );
   }
 
   // Summary screen
   if (showSummary) {
-    const percent =
-      totalCards > 0 ? Math.round((masteredCount / totalCards) * 100) : 0;
-    const unmasteredCount = totalCards - masteredCount;
-
+    const percent = totalCards > 0 ? Math.round((stats.good / totalCards) * 100) : 0;
     return (
       <div className="mx-auto max-w-md space-y-6 py-8">
         <div className="text-center">
           <Trophy className="mx-auto h-16 w-16 text-yellow-500" />
           <h2 className="mt-4 text-2xl font-bold">ทบทวนเสร็จแล้ว!</h2>
         </div>
-
         <Card className="p-6">
           <div className="space-y-4">
             <div className="text-center">
               <div className="text-4xl font-bold text-green-600">
-                {masteredCount}
-                <span className="text-lg text-muted-foreground">
-                  {" "}
-                  / {totalCards}
-                </span>
+                {stats.good}
+                <span className="text-lg text-muted-foreground"> / {totalCards}</span>
               </div>
-              <p className="mt-1 text-sm text-muted-foreground">
-                จำได้ {percent}%
-              </p>
+              <p className="mt-1 text-sm text-muted-foreground">จำได้ {percent}%</p>
             </div>
-
             <Progress value={percent} className="h-3" />
-
             <div className="flex justify-center gap-6 text-sm">
               <div className="flex items-center gap-2">
                 <div className="h-3 w-3 rounded-full bg-green-500" />
-                <span>จำได้ {masteredCount} คำ</span>
+                <span>จำได้ {stats.good} คำ</span>
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-3 w-3 rounded-full bg-red-500" />
-                <span>ยังจำไม่ได้ {unmasteredCount} คำ</span>
+                <span>ลืม {stats.bad} คำ</span>
               </div>
             </div>
           </div>
         </Card>
-
         <div className="flex gap-3">
-          <Button variant="outline" className="flex-1" onClick={onClose}>
-            <ArrowLeft className="mr-2 h-4 w-4" />
-            กลับ
-          </Button>
-          {unmasteredCount > 0 && (
-            <Button className="flex-1" onClick={handleRestart}>
+          <Link href="/vocabulary" className="flex-1">
+            <Button variant="outline" className="w-full">
+              <ArrowLeft className="mr-2 h-4 w-4" />
+              กลับ
+            </Button>
+          </Link>
+          {stats.bad > 0 && (
+            <Button
+              className="flex-1"
+              onClick={() => {
+                const failed = cards.filter((c) => {
+                  const q = results.get(c.id!);
+                  return q !== undefined && q < 3;
+                });
+                for (let i = failed.length - 1; i > 0; i--) {
+                  const j = Math.floor(Math.random() * (i + 1));
+                  [failed[i], failed[j]] = [failed[j], failed[i]];
+                }
+                setCards(failed);
+                setCurrentIndex(0);
+                setIsFlipped(false);
+                setResults(new Map());
+                setShowSummary(false);
+              }}
+            >
               <RotateCcw className="mr-2 h-4 w-4" />
-              ทบทวนใหม่ ({unmasteredCount} คำ)
+              ทบทวนคำที่ลืม ({stats.bad})
             </Button>
           )}
         </div>
@@ -207,31 +186,32 @@ export function FlashcardQuiz({
     );
   }
 
-  // Quiz card
+  // Flashcard review
   return (
     <div className="mx-auto max-w-lg space-y-6 py-4">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <Button variant="ghost" size="sm" onClick={onClose}>
-          <ArrowLeft className="mr-2 h-4 w-4" />
-          กลับ
-        </Button>
+        <Link href="/vocabulary">
+          <Button variant="ghost" size="sm">
+            <ArrowLeft className="mr-2 h-4 w-4" />
+            กลับ
+          </Button>
+        </Link>
         <span className="text-sm text-muted-foreground">
           {currentIndex + 1} / {totalCards}
         </span>
       </div>
 
-      {/* Progress */}
       <Progress value={progressPercent} className="h-2" />
 
       {/* Flashcard */}
       <div
         className="flashcard-container mx-auto cursor-pointer"
         style={{ perspective: "1000px" }}
-        onClick={handleFlip}
+        onClick={() => setIsFlipped((prev) => !prev)}
       >
         <div
-          className={`flashcard-inner relative w-full transition-transform duration-500`}
+          className="flashcard-inner relative w-full transition-transform duration-500"
           style={{
             transformStyle: "preserve-3d",
             transform: isFlipped ? "rotateY(180deg)" : "rotateY(0deg)",
@@ -247,9 +227,8 @@ export function FlashcardQuiz({
               <h2 className="text-3xl font-bold">{currentCard.word}</h2>
               {currentCard.partOfSpeech && (
                 <Badge variant="outline" className="text-sm">
-                  {PART_OF_SPEECH_LABELS[
-                    currentCard.partOfSpeech as PartOfSpeech
-                  ] ?? currentCard.partOfSpeech}
+                  {PART_OF_SPEECH_LABELS[currentCard.partOfSpeech as PartOfSpeech] ??
+                    currentCard.partOfSpeech}
                 </Badge>
               )}
               <p className="text-sm text-muted-foreground pt-4">
@@ -267,9 +246,7 @@ export function FlashcardQuiz({
             }}
           >
             <div className="text-center space-y-4 w-full">
-              <p className="text-sm text-muted-foreground">
-                {currentCard.word}
-              </p>
+              <p className="text-sm text-muted-foreground">{currentCard.word}</p>
               <h2 className="text-2xl font-bold">{currentCard.meaning}</h2>
               {currentCard.exampleSentence && (
                 <p className="text-sm italic text-muted-foreground/80 border-l-2 border-primary/30 pl-3 text-left">
@@ -280,9 +257,7 @@ export function FlashcardQuiz({
                 <div className="flex items-center justify-center gap-1 text-xs text-muted-foreground pt-2">
                   <BookOpen className="h-3 w-3" />
                   <span>
-                    {currentCard.bookTitle ||
-                      bookMap.get(currentCard.bookId) ||
-                      "หนังสือ"}
+                    {currentCard.bookTitle || "หนังสือ"}
                     {currentCard.page ? ` หน้า ${currentCard.page}` : ""}
                   </span>
                 </div>
@@ -292,32 +267,51 @@ export function FlashcardQuiz({
         </div>
       </div>
 
-      {/* Answer buttons — only visible when flipped */}
+      {/* SM-2 Rating buttons — visible when flipped */}
       <div
-        className={`flex gap-3 transition-opacity duration-300 ${
+        className={`grid grid-cols-4 gap-2 transition-opacity duration-300 ${
           isFlipped ? "opacity-100" : "opacity-0 pointer-events-none"
         }`}
       >
         <Button
           variant="outline"
-          className="flex-1 border-red-300 text-red-600 hover:bg-red-50 hover:text-red-700 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950 dark:hover:text-red-300"
+          className="border-red-300 text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950"
           onClick={(e) => {
             e.stopPropagation();
-            handleAnswer(false);
+            handleRate(0);
           }}
         >
-          <X className="mr-2 h-4 w-4" />
-          ยังจำไม่ได้
+          ลืม
         </Button>
         <Button
-          className="flex-1 bg-green-600 text-white hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
+          variant="outline"
+          className="border-orange-300 text-orange-600 hover:bg-orange-50 dark:border-orange-800 dark:text-orange-400 dark:hover:bg-orange-950"
           onClick={(e) => {
             e.stopPropagation();
-            handleAnswer(true);
+            handleRate(3);
           }}
         >
-          <Check className="mr-2 h-4 w-4" />
-          จำได้แล้ว
+          ยาก
+        </Button>
+        <Button
+          variant="outline"
+          className="border-blue-300 text-blue-600 hover:bg-blue-50 dark:border-blue-800 dark:text-blue-400 dark:hover:bg-blue-950"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleRate(4);
+          }}
+        >
+          ดี
+        </Button>
+        <Button
+          className="bg-green-600 text-white hover:bg-green-700 dark:bg-green-700 dark:hover:bg-green-600"
+          onClick={(e) => {
+            e.stopPropagation();
+            handleRate(5);
+          }}
+        >
+          <Check className="mr-1 h-4 w-4" />
+          ง่าย
         </Button>
       </div>
     </div>

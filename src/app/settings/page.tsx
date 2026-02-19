@@ -13,15 +13,28 @@ import {
   Trash2,
   Languages,
   Sparkles,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { db } from "@/lib/db";
 import { toast } from "sonner";
+import { ObsidianExportDialog } from "@/components/export/obsidian-export-dialog";
 import {
   getTranslateEngine,
   setTranslateEngine,
+  getTargetLanguage,
+  setTargetLanguage,
+  TARGET_LANGUAGES,
   type TranslateEngine,
+  type TargetLangCode,
 } from "@/lib/translate";
 
 export default function SettingsPage() {
@@ -30,12 +43,15 @@ export default function SettingsPage() {
   const [bookCount, setBookCount] = useState(0);
   const [vocabCount, setVocabCount] = useState(0);
   const [translateEngine, setTranslateEngineState] = useState<TranslateEngine>("google");
+  const [targetLang, setTargetLangState] = useState<TargetLangCode>("th");
+  const [obsidianExportOpen, setObsidianExportOpen] = useState(false);
 
   useEffect(() => {
     (async () => {
       setBookCount(await db.books.count());
       setVocabCount(await db.vocabulary.count());
       setTranslateEngineState(await getTranslateEngine());
+      setTargetLangState(await getTargetLanguage());
       if (navigator.storage?.estimate) {
         const est = await navigator.storage.estimate();
         const used = est.usage ?? 0;
@@ -51,6 +67,13 @@ export default function SettingsPage() {
     await setTranslateEngine(engine);
     setTranslateEngineState(engine);
     toast.success(engine === "gemini" ? "เปลี่ยนเป็น AI (Gemini)" : "เปลี่ยนเป็น Google Translate");
+  };
+
+  const handleTargetLangChange = async (lang: TargetLangCode) => {
+    await setTargetLanguage(lang);
+    setTargetLangState(lang);
+    const label = TARGET_LANGUAGES.find((l) => l.code === lang)?.label ?? lang;
+    toast.success(`เปลี่ยนภาษาเป้าหมายเป็น ${label}`);
   };
 
   const handleExport = async () => {
@@ -203,6 +226,23 @@ export default function SettingsPage() {
             AI (Gemini)
           </Button>
         </div>
+        <div className="mt-3">
+          <label className="mb-1.5 block text-xs text-muted-foreground">
+            ภาษาเป้าหมาย
+          </label>
+          <Select value={targetLang} onValueChange={(v) => handleTargetLangChange(v as TargetLangCode)}>
+            <SelectTrigger className="w-full">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {TARGET_LANGUAGES.map((lang) => (
+                <SelectItem key={lang.code} value={lang.code}>
+                  {lang.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
       </Card>
 
       {/* Storage info */}
@@ -247,6 +287,26 @@ export default function SettingsPage() {
           </Button>
         </div>
       </Card>
+
+      {/* Obsidian Export */}
+      <Card className="p-4">
+        <h2 className="mb-1 flex items-center gap-2 font-semibold">
+          <FileText className="h-4 w-4" />
+          ส่งออก Obsidian
+        </h2>
+        <p className="mb-3 text-xs text-muted-foreground">
+          ส่งออกไฮไลท์ บันทึก และคำศัพท์เป็นไฟล์ Markdown สำหรับ Obsidian
+        </p>
+        <Button variant="outline" onClick={() => setObsidianExportOpen(true)}>
+          <Download className="mr-2 h-4 w-4" />
+          ส่งออก Markdown
+        </Button>
+      </Card>
+
+      <ObsidianExportDialog
+        open={obsidianExportOpen}
+        onOpenChange={setObsidianExportOpen}
+      />
 
       {/* Danger zone */}
       <Card className="border-destructive/50 p-4">

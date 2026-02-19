@@ -9,6 +9,8 @@ import type {
   ReadingSession,
   BookNote,
   AppSetting,
+  TranslationCacheEntry,
+  QuizSession,
 } from "./types";
 
 class LibraryDB extends Dexie {
@@ -21,6 +23,8 @@ class LibraryDB extends Dexie {
   readingSessions!: Table<ReadingSession, number>;
   bookNotes!: Table<BookNote, number>;
   appSettings!: Table<AppSetting, string>;
+  translationCache!: Table<TranslationCacheEntry>;
+  quizSessions!: Table<QuizSession, number>;
 
   constructor() {
     super("PersonalLibraryDB");
@@ -53,6 +57,52 @@ class LibraryDB extends Dexie {
       readingSessions: "++id, bookId, startedAt, endedAt, durationMinutes",
       bookNotes: "++id, bookId, createdAt, updatedAt",
       appSettings: "key",
+    });
+    this.version(6).stores({
+      books: "++id, title, author, format, status, addedAt, updatedAt",
+      bookFiles: "++id, bookId",
+      readingProgress: "++id, bookId",
+      bookmarks: "++id, bookId, page",
+      highlights: "++id, bookId, page",
+      vocabulary: "++id, word, bookId, partOfSpeech, mastered, language, createdAt",
+      readingSessions: "++id, bookId, startedAt, endedAt, durationMinutes",
+      bookNotes: "++id, bookId, createdAt, updatedAt",
+      appSettings: "key",
+      translationCache: "[engine+targetLang+text], createdAt",
+    });
+    this.version(7).stores({
+      books: "++id, title, author, format, status, addedAt, updatedAt",
+      bookFiles: "++id, bookId",
+      readingProgress: "++id, bookId",
+      bookmarks: "++id, bookId, page",
+      highlights: "++id, bookId, page",
+      vocabulary: "++id, word, bookId, partOfSpeech, mastered, language, createdAt",
+      readingSessions: "++id, bookId, startedAt, endedAt, durationMinutes",
+      bookNotes: "++id, bookId, page, createdAt, updatedAt",
+      appSettings: "key",
+      translationCache: "[engine+targetLang+text], createdAt",
+    });
+    this.version(8).stores({
+      books: "++id, title, author, format, status, addedAt, updatedAt",
+      bookFiles: "++id, bookId",
+      readingProgress: "++id, bookId",
+      bookmarks: "++id, bookId, page",
+      highlights: "++id, bookId, page",
+      vocabulary: "++id, word, bookId, partOfSpeech, mastered, language, createdAt, nextReviewAt",
+      readingSessions: "++id, bookId, startedAt, endedAt, durationMinutes",
+      bookNotes: "++id, bookId, page, type, createdAt, updatedAt",
+      appSettings: "key",
+      translationCache: "[engine+targetLang+text], createdAt",
+      quizSessions: "++id, date, createdAt",
+    }).upgrade(tx => {
+      return tx.table("vocabulary").toCollection().modify(vocab => {
+        if (!vocab.mastered && !vocab.nextReviewAt) {
+          vocab.nextReviewAt = new Date();
+          vocab.interval = 0;
+          vocab.easeFactor = 2.5;
+          vocab.repetitions = 0;
+        }
+      });
     });
   }
 }

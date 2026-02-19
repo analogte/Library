@@ -10,6 +10,7 @@ import {
   Pencil,
   Trash2,
   BookOpen,
+  Download,
 } from "lucide-react";
 import { db } from "@/lib/db";
 import { Button } from "@/components/ui/button";
@@ -26,6 +27,7 @@ import {
 } from "@/components/ui/dialog";
 import { toast } from "sonner";
 import type { BookNote } from "@/lib/types";
+import { generateBookMarkdown, downloadMarkdown } from "@/lib/obsidian-export";
 
 export default function BookNotesPage() {
   const params = useParams();
@@ -144,16 +146,36 @@ export default function BookNotesPage() {
         </Button>
       </div>
 
-      {/* Open reader link */}
-      <Button
-        variant="outline"
-        size="sm"
-        className="gap-2"
-        onClick={() => router.push(`/reader/${bookId}`)}
-      >
-        <BookOpen className="h-4 w-4" />
-        เปิดอ่านหนังสือ
-      </Button>
+      {/* Action buttons */}
+      <div className="flex gap-2">
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={() => router.push(`/reader/${bookId}`)}
+        >
+          <BookOpen className="h-4 w-4" />
+          เปิดอ่านหนังสือ
+        </Button>
+        <Button
+          variant="outline"
+          size="sm"
+          className="gap-2"
+          onClick={async () => {
+            try {
+              const content = await generateBookMarkdown(bookId);
+              const safeName = (book?.title ?? "book").replace(/[/\\?%*:|"<>]/g, "-").substring(0, 100);
+              downloadMarkdown(`${safeName}.md`, content);
+              toast.success("ส่งออกสำเร็จ");
+            } catch {
+              toast.error("ส่งออกล้มเหลว");
+            }
+          }}
+        >
+          <Download className="h-4 w-4" />
+          ส่งออก MD
+        </Button>
+      </div>
 
       {/* Notes list */}
       {notes && notes.length > 0 ? (
@@ -166,9 +188,21 @@ export default function BookNotesPage() {
             >
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
-                  <h3 className="font-medium leading-tight">
-                    {note.title || "ไม่มีหัวข้อ"}
-                  </h3>
+                  <div className="flex items-center gap-2">
+                    <h3 className="font-medium leading-tight">
+                      {note.title || "ไม่มีหัวข้อ"}
+                    </h3>
+                    {note.pageLabel && (
+                      <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded shrink-0">
+                        {note.pageLabel}
+                      </span>
+                    )}
+                  </div>
+                  {note.highlightText && (
+                    <p className="mt-1 text-xs text-muted-foreground/80 italic line-clamp-1 border-l-2 border-primary/30 pl-1.5">
+                      &ldquo;{note.highlightText}&rdquo;
+                    </p>
+                  )}
                   {note.content && (
                     <p className="mt-1 text-sm text-muted-foreground line-clamp-3 whitespace-pre-line">
                       {note.content}

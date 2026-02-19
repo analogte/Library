@@ -10,8 +10,8 @@ import {
   X,
   Plus,
   Volume2,
-  VolumeX,
   Bot,
+  FileText,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
@@ -25,6 +25,8 @@ interface SelectionMenuProps {
   onSaveVocab: (text: string, translation: string) => void;
   onHighlight?: (text: string) => void;
   onAskAI?: () => void;
+  onAddNote?: () => void;
+  onSpeak?: (text: string) => void;
 }
 
 export function SelectionMenu({
@@ -34,12 +36,13 @@ export function SelectionMenu({
   onSaveVocab,
   onHighlight,
   onAskAI,
+  onAddNote,
+  onSpeak,
 }: SelectionMenuProps) {
   const [showTranslation, setShowTranslation] = useState(false);
   const [translating, setTranslating] = useState(false);
   const [translation, setTranslation] = useState("");
   const [detectedLang, setDetectedLang] = useState("");
-  const [isSpeaking, setIsSpeaking] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
 
@@ -66,13 +69,6 @@ export function SelectionMenu({
     setPos({ top, left });
   }, [rect, showTranslation, translating, translation]);
 
-  // Stop TTS on unmount
-  useEffect(() => {
-    return () => {
-      window.speechSynthesis?.cancel();
-    };
-  }, []);
-
   const handleTranslate = async () => {
     setShowTranslation(true);
     setTranslating(true);
@@ -85,53 +81,6 @@ export function SelectionMenu({
     } finally {
       setTranslating(false);
     }
-  };
-
-  const handleSpeak = () => {
-    if (!window.speechSynthesis) {
-      toast.error("เบราว์เซอร์ไม่รองรับ Text-to-Speech");
-      return;
-    }
-
-    if (isSpeaking) {
-      window.speechSynthesis.cancel();
-      setIsSpeaking(false);
-      return;
-    }
-
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.lang = "en-US";
-    utterance.rate = 0.85;
-    utterance.pitch = 1.0;
-
-    // Pick the best English voice available
-    const voices = window.speechSynthesis.getVoices();
-    const preferredNames = [
-      "Google US English",       // Chrome — natural
-      "Google UK English Female", // Chrome — natural
-      "Samantha",                // macOS — decent quality
-      "Karen",                   // macOS — Australian
-      "Daniel",                  // macOS — British
-      "Moira",                   // macOS — Irish
-    ];
-    let bestVoice: SpeechSynthesisVoice | undefined;
-    for (const name of preferredNames) {
-      bestVoice = voices.find((v) => v.name === name);
-      if (bestVoice) break;
-    }
-    // Fallback: any English voice
-    if (!bestVoice) {
-      bestVoice = voices.find((v) => v.lang.startsWith("en") && !v.localService) ??
-                  voices.find((v) => v.lang.startsWith("en"));
-    }
-    if (bestVoice) utterance.voice = bestVoice;
-
-    utterance.onend = () => setIsSpeaking(false);
-    utterance.onerror = () => setIsSpeaking(false);
-
-    window.speechSynthesis.cancel();
-    window.speechSynthesis.speak(utterance);
-    setIsSpeaking(true);
   };
 
   const handleCopy = async () => {
@@ -217,12 +166,8 @@ export function SelectionMenu({
             <Languages className="mr-1 h-3.5 w-3.5" />
             แปล
           </Button>
-          <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={handleSpeak}>
-            {isSpeaking ? (
-              <VolumeX className="mr-1 h-3.5 w-3.5" />
-            ) : (
-              <Volume2 className="mr-1 h-3.5 w-3.5" />
-            )}
+          <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={() => onSpeak?.(text)}>
+            <Volume2 className="mr-1 h-3.5 w-3.5" />
             ฟัง
           </Button>
           <Button
@@ -254,6 +199,12 @@ export function SelectionMenu({
             <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={onAskAI}>
               <Bot className="mr-1 h-3.5 w-3.5" />
               ถาม AI
+            </Button>
+          )}
+          {onAddNote && (
+            <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={onAddNote}>
+              <FileText className="mr-1 h-3.5 w-3.5" />
+              จดโน้ต
             </Button>
           )}
           <Button size="sm" variant="ghost" className="h-8 px-2 text-xs" onClick={handleCopy}>
